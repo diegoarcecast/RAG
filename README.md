@@ -413,3 +413,15 @@ Después de eso:
 Probar PDF directo y PDF con OCR.
 
 No se recomienda avanzar a embeddings hasta que la ingesta, persistencia, limpieza y validación de formatos estén estables.
+---
+
+## Actualización: ingesta por carpeta
+
+Se agregó el comando `app.ingest_folder` para procesar varios documentos dentro de una carpeta.
+
+### Comando disponible
+
+```bash
+python -m app.ingest_folder data/raw/samples --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100 --save-db
+```
+
