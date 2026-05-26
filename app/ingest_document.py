@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from app.ingestion.pipeline import ingest_document_to_memory
+from app.ingestion.repository import save_ingestion_result
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -57,6 +58,12 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         default=None,
         help="Ruta opcional para guardar el resultado completo en formato JSON.",
+    )
+
+    parser.add_argument(
+        "--save-db",
+        action="store_true",
+        help="Guarda el documento y sus chunks en PostgreSQL.",
     )
 
     return parser.parse_args()
@@ -120,6 +127,15 @@ def main() -> None:
             print("Tamaño:", chunk["metadata"]["chunk_size"])
             print("Contenido:")
             print(chunk["content"])
+
+    if args.save_db:
+        saved = save_ingestion_result(result)
+
+        print()
+        print("Ingesta guardada en PostgreSQL")
+        print("=" * 60)
+        print("document_id:", saved["document_id"])
+        print("chunks_insertados:", saved["inserted_chunks"])
 
     if args.json_output:
         output_path = Path(args.json_output).expanduser().resolve()
