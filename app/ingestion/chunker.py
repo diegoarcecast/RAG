@@ -10,6 +10,51 @@ class TextChunk:
     metadata: dict
 
 
+def _adjust_start_to_natural_boundary(text: str, start: int, text_length: int) -> int:
+    """
+    Ajusta el inicio del chunk para evitar comenzar en medio de una palabra
+    e intenta iniciar en un límite más natural: párrafo, línea, oración o palabra.
+    """
+    if start <= 0:
+        return 0
+
+    if start >= text_length:
+        return text_length
+
+    search_window = 120
+    window_end = min(start + search_window, text_length)
+
+    natural_boundaries = [
+        "\n\n",
+        "\n",
+        ". ",
+        "? ",
+        "! ",
+        "; ",
+        ", ",
+        " ",
+    ]
+
+    for boundary in natural_boundaries:
+        position = text.find(boundary, start, window_end)
+
+        if position != -1:
+            adjusted_start = position + len(boundary)
+
+            while adjusted_start < text_length and text[adjusted_start].isspace():
+                adjusted_start += 1
+
+            return adjusted_start
+
+    while start < text_length and not text[start].isspace():
+        start += 1
+
+    while start < text_length and text[start].isspace():
+        start += 1
+
+    return start
+
+
 def split_text_into_chunks(
     text: str,
     chunk_size: int = 1200,
@@ -18,12 +63,8 @@ def split_text_into_chunks(
     base_metadata: dict | None = None,
 ) -> list[TextChunk]:
     """
-    Divide un texto en chunks con solapamiento.
-
-    chunk_size define el tamaño máximo aproximado del fragmento.
-    chunk_overlap define cuántos caracteres se repiten entre chunks.
-    min_chunk_size evita guardar fragmentos finales demasiado pequeños.
-    base_metadata permite heredar metadata del documento original.
+    Divide un texto en chunks con solapamiento, intentando cortar en párrafos,
+    oraciones y evitando que el siguiente chunk inicie en medio de una palabra.
     """
 
     if text is None:
@@ -59,11 +100,19 @@ def split_text_into_chunks(
         if end < text_length:
             paragraph_break = text.rfind("\n\n", start, end)
             sentence_break = text.rfind(". ", start, end)
+            comma_break = text.rfind(", ", start, end)
+            space_break = text.rfind(" ", start, end)
 
-            if paragraph_break > start + int(chunk_size * 0.5):
+            minimum_acceptable_end = start + int(chunk_size * 0.5)
+
+            if paragraph_break > minimum_acceptable_end:
                 end = paragraph_break
-            elif sentence_break > start + int(chunk_size * 0.5):
+            elif sentence_break > minimum_acceptable_end:
                 end = sentence_break + 1
+            elif comma_break > minimum_acceptable_end:
+                end = comma_break + 1
+            elif space_break > minimum_acceptable_end:
+                end = space_break
 
         content = text[start:end].strip()
 
@@ -92,9 +141,11 @@ def split_text_into_chunks(
             chunk_index += 1
 
         next_start = end - chunk_overlap
+        next_start = _adjust_start_to_natural_boundary(text, next_start, text_length)
 
         if next_start <= start:
             next_start = end
+            next_start = _adjust_start_to_natural_boundary(text, next_start, text_length)
 
         start = next_start
 

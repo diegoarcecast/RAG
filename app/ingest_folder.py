@@ -57,8 +57,13 @@ def main() -> None:
     if not folder.is_dir():
         raise NotADirectoryError(f"La ruta no es una carpeta: {folder}")
 
-    files = sorted([path for path in folder.iterdir() if path.is_file()])
-
+    files = sorted(
+    [
+        path
+        for path in folder.iterdir()
+        if path.is_file() and not path.name.startswith(".")
+    ]
+)
     print("Carpeta:", folder)
     print("Archivos encontrados:", len(files))
     print("=" * 60)
