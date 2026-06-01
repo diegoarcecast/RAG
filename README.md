@@ -955,3 +955,20 @@ Probar PDF escaneado con OCR.
 ```
 
 No se recomienda avanzar a embeddings hasta validar correctamente la ingesta de PDF, porque los PDF probablemente serán parte importante del corpus documental de la tesis.
+
+## Validación con corpus técnico de prueba
+
+Se validó la ingesta de una carpeta con documentos técnicos y académicos más realistas ubicados en `data/raw/samples`.
+
+Documentos procesados:
+
+- `AlgorithmsNotesForProfessionals.pdf`
+- `Hallucination to Truth_ A Review of Fact-Checking and Factuality Evaluation in Large Language Models.html`
+- `KALI LINUX.pdf`
+- `ListadoArticulosAcademicos.xlsx`
+- `PostgreSQLNotesForProfessionals.pdf`
+
+Parámetros usados:
+
+```bash
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
