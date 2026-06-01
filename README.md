@@ -945,7 +945,7 @@ El próximo paso técnico recomendado es:
 Después de eso:
 
 ```text
-Probar PDF con texto seleccionable.
+Probar PDF con texto seleccionable. ()
 ```
 
 Luego:
@@ -972,3 +972,100 @@ Parámetros usados:
 
 ```bash
 python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+
+## Validación de embeddings con Ollama y pgvector
+
+Se implementó la generación de embeddings usando Ollama local con el modelo `nomic-embed-text`.
+
+Modelo usado:
+
+```text
+nomic-embed-text
+
+Dimensión validada:
+
+768
+
+Esta dimensión coincide con la columna existente en PostgreSQL:
+
+document_chunks.embedding vector(768)
+Módulos agregados
+
+Se agregó la carpeta:
+
+app/embeddings/
+
+Archivos principales:
+
+app/embeddings/__init__.py
+app/embeddings/ollama_client.py
+app/embeddings/repository.py
+app/embed_chunks.py
+Función de ollama_client.py
+
+El archivo app/embeddings/ollama_client.py contiene la función:
+
+generate_embedding()
+
+Esta función envía texto al endpoint local de Ollama:
+
+http://localhost:11434/api/embeddings
+
+y valida que el embedding generado tenga 768 dimensiones.
+
+Función de repository.py
+
+El archivo app/embeddings/repository.py permite:
+
+Consultar chunks sin embedding.
+Consultar chunks con embedding.
+Actualizar la columna document_chunks.embedding.
+Contar chunks pendientes y procesados.
+Comando agregado
+
+Se agregó el comando:
+
+python -m app.embed_chunks --limit 10
+
+El parámetro --limit permite procesar embeddings por lotes controlados.
+
+Validación realizada
+
+Se procesó el corpus técnico de prueba previamente cargado en PostgreSQL.
+
+Conteos finales confirmados:
+
+total_chunks = 1550
+chunks_con_embedding = 1550
+chunks_sin_embedding = 0
+
+Esto confirma que todos los chunks del corpus técnico de prueba ya tienen embeddings guardados en PostgreSQL usando pgvector.
+
+Estado actualizado
+
+La etapa de embeddings queda validada para el corpus actual.
+
+La cadena funcional confirmada es:
+
+chunk_text
+ -> Ollama nomic-embed-text
+ -> embedding vector(768)
+ -> PostgreSQL pgvector
+ -> document_chunks.embedding
+
+Próximo paso recomendado
+
+El siguiente paso técnico es implementar búsqueda semántica usando la columna document_chunks.embedding.
+
+La búsqueda deberá:
+
+Recibir una consulta del usuario.
+Generar embedding de la consulta.
+Comparar contra document_chunks.embedding.
+Retornar los chunks más similares.
+Mostrar documento, chunk, distancia/similitud y texto recuperado.
+
+Después de guardarlo, corré:
+
+```bash
+git status --short
