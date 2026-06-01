@@ -17,12 +17,13 @@ El objetivo técnico del prototipo es construir una arquitectura RAG capaz de:
 3. Limpiar y normalizar contenido.
 4. Dividir documentos en fragmentos o chunks.
 5. Guardar documentos y chunks en PostgreSQL.
-6. Preparar los chunks para una etapa posterior de embeddings.
-7. Recuperar evidencia documental.
-8. Generar respuestas trazables y fundamentadas.
-9. Integrar el sistema a un canal conversacional mediante OpenClaw y Discord.
+6. Generar embeddings para los chunks.
+7. Almacenar vectores en PostgreSQL mediante pgvector.
+8. Recuperar evidencia documental mediante búsqueda semántica.
+9. Generar respuestas trazables y fundamentadas.
+10. Integrar el sistema a un canal conversacional mediante OpenClaw y Discord.
 
-El sistema no busca entrenar un modelo de inteligencia artificial desde cero. El objetivo es validar una arquitectura funcional que combine ingesta documental, almacenamiento, recuperación, generación de respuestas y trazabilidad.
+El sistema no busca entrenar un modelo de inteligencia artificial desde cero. El objetivo es validar una arquitectura funcional que combine ingesta documental, almacenamiento, recuperación semántica, generación de respuestas y trazabilidad documental.
 
 ---
 
@@ -77,6 +78,10 @@ main
 * Ingesta por carpeta validada con varios formatos.
 * Limpieza segura por `file_path` validada.
 * Chunking mejorado para evitar inicios de chunks en medio de palabras.
+* Modelo local de embeddings instalado en Ollama: `nomic-embed-text`.
+* Generación de embeddings implementada.
+* Embeddings guardados en `document_chunks.embedding`.
+* Búsqueda semántica implementada con pgvector.
 * `.gitignore` actualizado para evitar archivos locales no deseados.
 
 ---
@@ -90,6 +95,13 @@ rag-tesis/
 │   ├── db_check.py
 │   ├── ingest_document.py
 │   ├── ingest_folder.py
+│   ├── embed_chunks.py
+│   ├── search_chunks.py
+│   ├── embeddings/
+│   │   ├── __init__.py
+│   │   ├── ollama_client.py
+│   │   ├── repository.py
+│   │   └── search_repository.py
 │   └── ingestion/
 │       ├── __init__.py
 │       ├── cleaner.py
@@ -131,6 +143,8 @@ No se deben subir al repositorio:
 La carpeta `data/raw/` se conserva mediante `.gitkeep`.
 
 La carpeta `.antigravitycli/` fue detectada como archivo local generado por herramienta externa y debe permanecer ignorada.
+
+Los documentos técnicos usados para pruebas permanecen locales. El README documenta los nombres y resultados, pero los archivos del corpus no deben versionarse si contienen peso innecesario o información no destinada al repositorio.
 
 ---
 
@@ -200,7 +214,9 @@ ON DELETE CASCADE
 
 Esto significa que al eliminar un documento desde `documents`, PostgreSQL elimina automáticamente sus chunks asociados en `document_chunks`.
 
-### Tablas futuras para recuperación
+La columna `embedding` almacena vectores de 768 dimensiones generados con el modelo local `nomic-embed-text` mediante Ollama.
+
+### Tablas para trazabilidad RAG
 
 También existen:
 
@@ -209,10 +225,18 @@ rag_queries
 retrieval_logs
 ```
 
-Estas tablas todavía no se están usando de forma activa. Su uso será posterior, cuando se implemente búsqueda semántica y registro de consultas.
+Estas tablas todavía no se están usando de forma activa. Su uso será posterior, cuando se implemente el registro formal de consultas y recuperación documental.
 
----
+### Estado actual de datos
 
+La base local quedó poblada con el corpus técnico de prueba:
+
+```text
+documents = 5
+document_chunks = 1550
+chunks_con_embedding = 1550
+chunks_sin_embedding = 0
+```
 ## 7. Archivos principales del sistema
 
 ### `app/db.py`
@@ -344,12 +368,20 @@ split_text_into_chunks()
 chunks_to_dicts()
 ```
 
-Parámetros usados en pruebas:
+Parámetros usados en pruebas pequeñas:
 
 ```text
 chunk_size = 300
 chunk_overlap = 50
 min_chunk_size = 100
+```
+
+Parámetros usados en corpus técnico realista:
+
+```text
+chunk_size = 1200
+chunk_overlap = 200
+min_chunk_size = 120
 ```
 
 Estado actual:
@@ -362,18 +394,7 @@ Estado actual:
   * oraciones
   * signos de puntuación
   * espacios
-* Se validó con TXT y XLSX.
-
-Resultado observado en TXT:
-
-* Chunk 0: introducción del sistema.
-* Chunk 1: trazabilidad documental y calidad de recuperación.
-* Chunk 2: confiabilidad de respuesta.
-
-Resultado observado en XLSX:
-
-* El segundo chunk ya no inició con texto cortado como `rtinentes.`
-* Ahora inicia en una línea completa.
+* Se validó con TXT, XLSX y corpus técnico más extenso.
 
 ---
 
@@ -492,20 +513,125 @@ Función:
 Comando validado sin guardar en BD:
 
 ```bash
-python -m app.ingest_folder data/raw/samples --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120
 ```
 
 Comando validado con guardado en BD:
 
 ```bash
-python -m app.ingest_folder data/raw/samples --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100 --save-db
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
 ```
+
+---
+
+### `app/embeddings/ollama_client.py`
+
+Cliente local para Ollama.
+
+Responsabilidad:
+
+* Enviar texto al endpoint local de Ollama.
+* Usar el modelo `nomic-embed-text`.
+* Validar que el embedding generado tenga 768 dimensiones.
+
+Endpoint usado:
+
+```text
+http://localhost:11434/api/embeddings
+```
+
+Función principal:
+
+```text
+generate_embedding()
+```
+
+---
+
+### `app/embeddings/repository.py`
+
+Repositorio para operaciones de embeddings en PostgreSQL.
+
+Responsabilidad:
+
+* Contar chunks con embedding.
+* Contar chunks sin embedding.
+* Obtener chunks pendientes.
+* Actualizar embeddings por `chunk_id`.
+
+Funciones principales:
+
+```text
+get_chunks_without_embeddings()
+update_chunk_embedding()
+count_chunks_without_embeddings()
+count_chunks_with_embeddings()
+```
+
+---
+
+### `app/embed_chunks.py`
+
+Comando para generar embeddings por lotes.
+
+Uso:
+
+```bash
+python -m app.embed_chunks --limit 100
+```
+
+Responsabilidad:
+
+* Buscar chunks sin embedding.
+* Generar embedding con Ollama.
+* Guardar el vector en `document_chunks.embedding`.
+* Mostrar conteos antes y después.
+
+---
+
+### `app/embeddings/search_repository.py`
+
+Repositorio para búsqueda vectorial con pgvector.
+
+Responsabilidad:
+
+* Recibir un embedding de consulta.
+* Compararlo contra `document_chunks.embedding`.
+* Ordenar resultados por distancia vectorial.
+* Retornar los chunks más similares.
+
+Operador usado:
+
+```text
+<=>
+```
+
+Este operador calcula distancia vectorial en pgvector.
+
+---
+
+### `app/search_chunks.py`
+
+Comando para búsqueda semántica.
+
+Uso:
+
+```bash
+python -m app.search_chunks "retrieval augmented generation hallucination fact checking" --limit 5
+```
+
+Responsabilidad:
+
+* Recibir una consulta en lenguaje natural.
+* Generar embedding de la consulta.
+* Buscar chunks similares usando pgvector.
+* Mostrar documento, chunk, distancia y texto recuperado.
 
 ---
 
 ## 8. Formatos documentales validados
 
-Se validó procesamiento en memoria con:
+Se validó procesamiento con:
 
 ```text
 TXT
@@ -513,6 +639,8 @@ Markdown
 HTML
 CSV
 XLSX
+PDF con texto seleccionable
+PDF escaneado con OCR
 ```
 
 Se validó ingesta por carpeta con:
@@ -523,29 +651,24 @@ HTML
 Markdown
 TXT
 XLSX
+PDF
 ```
 
-Pendientes de validar:
-
-```text
-PDF con texto seleccionable
-PDF escaneado con OCR
-DOCX
-```
-
-Aunque DOCX tiene extractor implementado, todavía no se ha validado en la tanda actual de pruebas.
+También existe extractor para DOCX, pero todavía falta validarlo con un documento DOCX real de prueba.
 
 ---
 
-## 9. Archivos de prueba utilizados
+## 9. Corpus y archivos de prueba utilizados
 
-Carpeta de documentos de prueba:
+### Pruebas iniciales pequeñas
+
+Carpeta:
 
 ```text
 data/raw/samples
 ```
 
-Archivos usados:
+Archivos usados inicialmente:
 
 ```text
 prueba_txt.txt
@@ -561,8 +684,23 @@ Archivo ignorado correctamente:
 .gitkeep
 ```
 
----
+### Corpus técnico realista
 
+Documentos procesados:
+
+* `AlgorithmsNotesForProfessionals.pdf`
+* `Hallucination to Truth_ A Review of Fact-Checking and Factuality Evaluation in Large Language Models.html`
+* `KALI LINUX.pdf`
+* `ListadoArticulosAcademicos.xlsx`
+* `PostgreSQLNotesForProfessionals.pdf`
+
+Este corpus permitió validar:
+
+* PDF directo largo.
+* HTML académico/técnico.
+* PDF escaneado con OCR.
+* XLSX académico.
+* Documentación técnica extensa.
 ## 10. Validaciones realizadas
 
 ### Validación del ambiente virtual
@@ -620,49 +758,15 @@ Chunks generados: 2
 
 ---
 
-### Validación de salida JSON
-
-Comando:
-
-```bash
-python -m app.ingest_document data/raw/samples/prueba_xlsx.xlsx --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100 --json-output data/processed/debug/prueba_xlsx.json
-```
-
-Resultado:
-
-```text
-Resultado JSON guardado en: /home/diego/rag-tesis/data/processed/debug/prueba_xlsx.json
-```
-
----
-
-### Validación de ingesta individual con PostgreSQL
-
-Comando:
-
-```bash
-python -m app.ingest_document data/raw/samples/prueba_xlsx.xlsx --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100 --save-db
-```
-
-Resultado validado:
-
-```text
-Ingesta guardada en PostgreSQL
-document_id: 2
-chunks_insertados: 2
-```
-
----
-
 ### Validación de ingesta por carpeta sin PostgreSQL
 
 Comando:
 
 ```bash
-python -m app.ingest_folder data/raw/samples --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120
 ```
 
-Resultado validado:
+Resultado validado con corpus técnico:
 
 ```text
 Archivos encontrados: 5
@@ -678,7 +782,7 @@ Guardados en BD: 0
 Comando:
 
 ```bash
-python -m app.ingest_folder data/raw/samples --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100 --save-db
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
 ```
 
 Resultado validado:
@@ -692,26 +796,143 @@ Guardados en BD: 5
 Documentos insertados:
 
 ```text
-prueba_csv.csv        -> document_id: 3, chunks: 2
-prueba_html.html      -> document_id: 4, chunks: 1
-prueba_markdown.md    -> document_id: 5, chunks: 2
-prueba_txt.txt        -> document_id: 6, chunks: 3
-prueba_xlsx.xlsx      -> document_id: 7, chunks: 2
+AlgorithmsNotesForProfessionals.pdf      -> document_id: 8, chunks: 420
+Hallucination...html                      -> document_id: 9, chunks: 208
+KALI LINUX.pdf                            -> document_id: 10, chunks: 4
+ListadoArticulosAcademicos.xlsx           -> document_id: 11, chunks: 787
+PostgreSQLNotesForProfessionals.pdf       -> document_id: 12, chunks: 131
 ```
 
 Conteos validados en PostgreSQL:
 
 ```text
 documents = 5
-document_chunks = 10
+document_chunks = 1550
 ```
 
-Posteriormente se limpió la base de datos de prueba y se confirmó que quedó vacía:
+---
+
+### Validación de modelo de embeddings
+
+Modelo instalado en Ollama:
 
 ```text
-documents = 0
-document_chunks = 0
+nomic-embed-text
 ```
+
+Comando usado para instalar:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Prueba realizada:
+
+```text
+Embedding generado correctamente.
+Dimensiones: 768
+```
+
+Esto confirmó compatibilidad con:
+
+```text
+document_chunks.embedding vector(768)
+```
+
+---
+
+### Validación de generación de embeddings por lotes
+
+Comando inicial:
+
+```bash
+python -m app.embed_chunks --limit 3
+```
+
+Resultado inicial:
+
+```text
+Embeddings generados: 3
+Fallidos: 0
+Chunks sin embedding después: 1547
+Chunks con embedding después: 3
+```
+
+Luego se procesó el resto del corpus por lotes.
+
+Resultado final confirmado:
+
+```text
+total_chunks = 1550
+chunks_con_embedding = 1550
+chunks_sin_embedding = 0
+```
+
+---
+
+### Validación directa en PostgreSQL de embeddings
+
+Comando:
+
+```bash
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS total_chunks FROM document_chunks;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_con_embedding FROM document_chunks WHERE embedding IS NOT NULL;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_sin_embedding FROM document_chunks WHERE embedding IS NULL;"
+```
+
+Resultado:
+
+```text
+total_chunks = 1550
+chunks_con_embedding = 1550
+chunks_sin_embedding = 0
+```
+
+---
+
+### Validación de búsqueda semántica
+
+Consulta sobre algoritmos:
+
+```bash
+python -m app.search_chunks "Big O notation algorithm complexity" --limit 5
+```
+
+Resultado esperado validado:
+
+```text
+Recuperó chunks desde AlgorithmsNotesForProfessionals.pdf
+```
+
+Consulta sobre RAG y alucinaciones:
+
+```bash
+python -m app.search_chunks "retrieval augmented generation hallucination fact checking" --limit 5
+```
+
+Resultado esperado validado:
+
+```text
+Recuperó chunks desde Hallucination to Truth...html
+```
+
+Consulta sobre PostgreSQL JSONB:
+
+```bash
+python -m app.search_chunks "PostgreSQL JSONB operators and querying JSON documents" --limit 5
+```
+
+Resultado esperado validado:
+
+```text
+Recuperó chunks desde PostgreSQLNotesForProfessionals.pdf
+```
+
+Observación:
+
+Las consultas en inglés funcionan mejor porque la mayor parte del corpus técnico está en inglés. Las consultas en español pueden recuperar resultados menos precisos cuando los documentos fuente están en inglés.
 
 ---
 
@@ -739,25 +960,51 @@ psql -h localhost -U rag_user -d rag_tesis -c "\dt"
 ### Consultar documentos guardados
 
 ```bash
-psql -h localhost -U rag_user -d rag_tesis -c "SELECT id, title, source_type, file_path FROM documents ORDER BY id DESC LIMIT 5;"
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT id, title, source_type, file_path FROM documents ORDER BY id DESC LIMIT 10;"
 ```
 
 ### Consultar chunks guardados
 
 ```bash
-psql -h localhost -U rag_user -d rag_tesis -c "SELECT id, document_id, chunk_index, LEFT(chunk_text, 120) AS preview FROM document_chunks ORDER BY id DESC LIMIT 10;"
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT id, document_id, chunk_index, LEFT(chunk_text, 120) AS preview FROM document_chunks ORDER BY id DESC LIMIT 10;"
 ```
 
 ### Confirmar conteo de documentos
 
 ```bash
-psql -h localhost -U rag_user -d rag_tesis -c "SELECT COUNT(*) AS total_documents FROM documents;"
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS total_documents FROM documents;"
 ```
 
 ### Confirmar conteo de chunks
 
 ```bash
-psql -h localhost -U rag_user -d rag_tesis -c "SELECT COUNT(*) AS total_chunks FROM document_chunks;"
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS total_chunks FROM document_chunks;"
+```
+
+### Verificar embeddings
+
+```bash
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_con_embedding FROM document_chunks WHERE embedding IS NOT NULL;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_sin_embedding FROM document_chunks WHERE embedding IS NULL;"
+```
+
+### Ingesta por carpeta
+
+```bash
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+```
+
+### Generar embeddings por lotes
+
+```bash
+python -m app.embed_chunks --limit 100
+```
+
+### Buscar chunks similares
+
+```bash
+python -m app.search_chunks "retrieval augmented generation hallucination fact checking" --limit 5
 ```
 
 ### Limpiar una ingesta por `file_path`
@@ -773,9 +1020,6 @@ deleted = delete_document_by_file_path(file_path)
 print(f"Documentos eliminados: {deleted}")
 PY
 ```
-
----
-
 ## 12. Problemas detectados y aprendizajes
 
 ### Permisos
@@ -853,6 +1097,24 @@ porque intenta conectarse como el usuario Linux `diego`.
 
 ---
 
+### Paginador de PostgreSQL
+
+Algunas consultas largas abren el paginador de `psql` y muestran `(END)`.
+
+Para salir:
+
+```text
+q
+```
+
+Para evitar el paginador:
+
+```bash
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) FROM document_chunks;"
+```
+
+---
+
 ### Markdown del README
 
 Se detectaron problemas al pegar bloques largos de Markdown desde terminal usando heredoc.
@@ -865,115 +1127,108 @@ Editar README.md manualmente desde VS Code cuando el contenido sea largo.
 
 ---
 
-## 13. Estado de Git conocido
+### Tamaño del corpus XLSX
 
-Se realizaron commits previos para:
-
-1. Configuración inicial de PostgreSQL y pgvector.
-2. Dependencias de procesamiento documental y OCR.
-3. Pipeline inicial de ingesta documental.
-4. Persistencia de ingesta documental en PostgreSQL.
-5. Comando inicial de ingesta documental por carpeta.
-
-Commit conocido:
+El archivo `ListadoArticulosAcademicos.xlsx` inicialmente generó demasiados chunks:
 
 ```text
-35845d7 Agrega persistencia de ingesta documental en PostgreSQL
+49,281,031 caracteres
+53,398 chunks
 ```
 
-Después de ese commit se creó y subió otro commit para el comando de ingesta por carpeta.
-
-Cambios actuales pendientes antes del siguiente commit:
+Se redujo el contenido del Excel y quedó en un tamaño más manejable:
 
 ```text
-.gitignore
-app/ingest_folder.py
-app/ingestion/chunker.py
-README.md
+726,988 caracteres
+787 chunks
 ```
 
-Motivo de los cambios pendientes:
+Regla:
 
-* Ignorar `.antigravitycli/`.
-* Ajustar `app.ingest_folder` para ignorar archivos ocultos como `.gitkeep`.
-* Mejorar `app/ingestion/chunker.py` para iniciar chunks en límites más naturales.
-* Actualizar README con el estado real del proyecto.
+```text
+No usar archivos excesivamente grandes para validaciones iniciales.
+Primero validar con corpus reducido y controlado.
+```
 
 ---
 
-## 14. Pendientes reales actuales
+## 13. Estado técnico actual
 
-1. Hacer commit de los cambios actuales cuando el README quede revisado.
-2. Probar PDF con texto seleccionable.
-3. Probar PDF escaneado con OCR.
-4. Validar DOCX con un documento real de prueba.
-5. Evaluar si se requiere mejorar aún más el chunking para documentos largos.
-6. Definir metadata avanzada:
+El sistema ya tiene funcionando:
 
-   * `page_number`
-   * `section_title`
-   * nombre original del documento
-   * tipo de extracción
-   * versión del corpus
-7. Implementar generación de embeddings.
-8. Guardar embeddings en `document_chunks.embedding`.
-9. Crear índice vectorial cuando exista suficiente volumen de chunks.
-10. Implementar búsqueda semántica.
-11. Registrar consultas en `rag_queries`.
-12. Registrar recuperación en `retrieval_logs`.
-13. Integrar recuperación con generación de respuestas.
-14. Integrar con OpenClaw y Discord.
+1. Ingesta documental individual.
+2. Ingesta documental por carpeta.
+3. Extracción de PDF con texto seleccionable.
+4. Extracción OCR para PDF escaneado.
+5. Extracción HTML.
+6. Extracción XLSX.
+7. Chunking mejorado.
+8. Persistencia en PostgreSQL.
+9. Generación de embeddings con Ollama.
+10. Almacenamiento vectorial con pgvector.
+11. Búsqueda semántica sobre chunks vectorizados.
+
+La base de datos local quedó poblada con:
+
+```text
+documents = 5
+document_chunks = 1550
+chunks_con_embedding = 1550
+chunks_sin_embedding = 0
+```
 
 ---
 
-## 15. Próximo paso recomendado
-
-El próximo paso técnico recomendado es:
-
-```text
-1. Guardar este README corregido.
-2. Revisar git status.
-3. Agregar a staging:
-   - README.md
-   - .gitignore
-   - app/ingest_folder.py
-   - app/ingestion/chunker.py
-4. Crear commit.
-5. Subir a GitHub.
-```
-
-Después de eso:
-
-```text
-Probar PDF con texto seleccionable. ()
-```
-
-Luego:
-
-```text
-Probar PDF escaneado con OCR.
-```
-
-No se recomienda avanzar a embeddings hasta validar correctamente la ingesta de PDF, porque los PDF probablemente serán parte importante del corpus documental de la tesis.
-
-## Validación con corpus técnico de prueba
+## 14. Validación con corpus técnico de prueba
 
 Se validó la ingesta de una carpeta con documentos técnicos y académicos más realistas ubicados en `data/raw/samples`.
 
 Documentos procesados:
 
-- `AlgorithmsNotesForProfessionals.pdf`
-- `Hallucination to Truth_ A Review of Fact-Checking and Factuality Evaluation in Large Language Models.html`
-- `KALI LINUX.pdf`
-- `ListadoArticulosAcademicos.xlsx`
-- `PostgreSQLNotesForProfessionals.pdf`
+* `AlgorithmsNotesForProfessionals.pdf`
+* `Hallucination to Truth_ A Review of Fact-Checking and Factuality Evaluation in Large Language Models.html`
+* `KALI LINUX.pdf`
+* `ListadoArticulosAcademicos.xlsx`
+* `PostgreSQLNotesForProfessionals.pdf`
 
 Parámetros usados:
 
 ```bash
 python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+```
 
-## Validación de embeddings con Ollama y pgvector
+Resultado validado:
+
+```text
+Procesados correctamente: 5
+Fallidos: 0
+Guardados en BD: 5
+```
+
+Conteos validados en PostgreSQL:
+
+```text
+documents = 5
+document_chunks = 1550
+```
+
+Distribución de chunks:
+
+```text
+AlgorithmsNotesForProfessionals.pdf      -> 420 chunks
+Hallucination...html                      -> 208 chunks
+KALI LINUX.pdf                            -> 4 chunks
+ListadoArticulosAcademicos.xlsx           -> 787 chunks
+PostgreSQLNotesForProfessionals.pdf       -> 131 chunks
+```
+
+Estado:
+
+La ingesta documental quedó validada con PDF directo, HTML académico, PDF escaneado/OCR, XLSX y documentación técnica extensa.
+
+---
+
+## 15. Validación de embeddings con Ollama y pgvector
 
 Se implementó la generación de embeddings usando Ollama local con el modelo `nomic-embed-text`.
 
@@ -981,91 +1236,241 @@ Modelo usado:
 
 ```text
 nomic-embed-text
+```
 
 Dimensión validada:
 
+```text
 768
+```
 
 Esta dimensión coincide con la columna existente en PostgreSQL:
 
+```text
 document_chunks.embedding vector(768)
-Módulos agregados
+```
 
-Se agregó la carpeta:
+Archivos agregados:
 
-app/embeddings/
+* `app/embeddings/__init__.py`
+* `app/embeddings/ollama_client.py`
+* `app/embeddings/repository.py`
+* `app/embed_chunks.py`
 
-Archivos principales:
+Función principal:
 
-app/embeddings/__init__.py
-app/embeddings/ollama_client.py
-app/embeddings/repository.py
-app/embed_chunks.py
-Función de ollama_client.py
-
-El archivo app/embeddings/ollama_client.py contiene la función:
-
+```text
 generate_embedding()
+```
 
-Esta función envía texto al endpoint local de Ollama:
+Endpoint local usado:
 
+```text
 http://localhost:11434/api/embeddings
+```
 
-y valida que el embedding generado tenga 768 dimensiones.
+Comando agregado:
 
-Función de repository.py
-
-El archivo app/embeddings/repository.py permite:
-
-Consultar chunks sin embedding.
-Consultar chunks con embedding.
-Actualizar la columna document_chunks.embedding.
-Contar chunks pendientes y procesados.
-Comando agregado
-
-Se agregó el comando:
-
+```bash
 python -m app.embed_chunks --limit 10
+```
 
-El parámetro --limit permite procesar embeddings por lotes controlados.
-
-Validación realizada
-
-Se procesó el corpus técnico de prueba previamente cargado en PostgreSQL.
+El parámetro `--limit` permite procesar embeddings por lotes controlados.
 
 Conteos finales confirmados:
 
+```text
 total_chunks = 1550
 chunks_con_embedding = 1550
 chunks_sin_embedding = 0
+```
 
-Esto confirma que todos los chunks del corpus técnico de prueba ya tienen embeddings guardados en PostgreSQL usando pgvector.
+Cadena funcional confirmada:
 
-Estado actualizado
-
-La etapa de embeddings queda validada para el corpus actual.
-
-La cadena funcional confirmada es:
-
+```text
 chunk_text
  -> Ollama nomic-embed-text
  -> embedding vector(768)
  -> PostgreSQL pgvector
  -> document_chunks.embedding
+```
 
-Próximo paso recomendado
+Estado:
 
-El siguiente paso técnico es implementar búsqueda semántica usando la columna document_chunks.embedding.
+La etapa de embeddings quedó validada para el corpus técnico actual.
 
-La búsqueda deberá:
+---
 
-Recibir una consulta del usuario.
-Generar embedding de la consulta.
-Comparar contra document_chunks.embedding.
-Retornar los chunks más similares.
-Mostrar documento, chunk, distancia/similitud y texto recuperado.
+## 16. Validación de búsqueda semántica con pgvector
 
-Después de guardarlo, corré:
+Se implementó búsqueda semántica usando embeddings almacenados en `document_chunks.embedding`.
+
+Archivos agregados:
+
+* `app/embeddings/search_repository.py`
+* `app/search_chunks.py`
+
+Comando de búsqueda:
 
 ```bash
-git status --short
+python -m app.search_chunks "retrieval augmented generation hallucination fact checking" --limit 5
+```
+
+Pruebas validadas:
+
+* Consulta sobre Big O recuperó `AlgorithmsNotesForProfessionals.pdf`.
+* Consulta sobre RAG, hallucination y fact-checking recuperó `Hallucination to Truth...html`.
+* Consulta sobre PostgreSQL JSONB recuperó `PostgreSQLNotesForProfessionals.pdf`.
+
+Estado:
+
+La búsqueda semántica funciona sobre los `1550` chunks vectorizados.
+
+Observación técnica:
+
+Las consultas en inglés funcionan mejor porque la mayor parte del corpus está en inglés. Las consultas en español pueden recuperar resultados menos precisos si el documento fuente está en inglés.
+
+Pendiente técnico:
+
+* Mejorar ranking.
+* Agregar filtros por documento o tipo documental.
+* Evaluar búsqueda híbrida: vectorial + texto.
+* Registrar consultas en `rag_queries`.
+* Registrar resultados recuperados en `retrieval_logs`.
+
+---
+
+## 17. Archivos nuevos de embeddings y búsqueda
+
+Se agregaron los siguientes archivos:
+
+```text
+app/embed_chunks.py
+app/search_chunks.py
+app/embeddings/__init__.py
+app/embeddings/ollama_client.py
+app/embeddings/repository.py
+app/embeddings/search_repository.py
+```
+
+### `app/embed_chunks.py`
+
+Comando para generar embeddings por lotes.
+
+Uso:
+
+```bash
+python -m app.embed_chunks --limit 100
+```
+
+Responsabilidad:
+
+* Buscar chunks sin embedding.
+* Generar embedding con Ollama.
+* Guardar el vector en `document_chunks.embedding`.
+* Mostrar conteos antes y después.
+
+### `app/search_chunks.py`
+
+Comando para búsqueda semántica.
+
+Uso:
+
+```bash
+python -m app.search_chunks "PostgreSQL JSONB operators and querying JSON documents" --limit 5
+```
+
+Responsabilidad:
+
+* Recibir una consulta en lenguaje natural.
+* Generar embedding de la consulta.
+* Buscar chunks similares usando pgvector.
+* Mostrar documento, chunk, distancia y texto recuperado.
+
+### `app/embeddings/ollama_client.py`
+
+Cliente local para Ollama.
+
+Responsabilidad:
+
+* Enviar texto a `http://localhost:11434/api/embeddings`.
+* Usar el modelo `nomic-embed-text`.
+* Validar que el vector generado tenga 768 dimensiones.
+
+### `app/embeddings/repository.py`
+
+Repositorio para operaciones de embeddings en PostgreSQL.
+
+Responsabilidad:
+
+* Contar chunks con embedding.
+* Contar chunks sin embedding.
+* Obtener chunks pendientes.
+* Actualizar embeddings por `chunk_id`.
+
+### `app/embeddings/search_repository.py`
+
+Repositorio para búsqueda vectorial.
+
+Responsabilidad:
+
+* Recibir un embedding de consulta.
+* Compararlo contra `document_chunks.embedding`.
+* Ordenar resultados por distancia vectorial.
+* Retornar los chunks más similares.
+
+---
+
+## 18. Comandos principales actuales
+
+### Ingesta individual
+
+```bash
+python -m app.ingest_document data/raw/samples/prueba_xlsx.xlsx --chunk-size 300 --chunk-overlap 50 --min-chunk-size 100 --show-chunks
+```
+
+### Ingesta por carpeta
+
+```bash
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+```
+
+### Generar embeddings por lotes
+
+```bash
+python -m app.embed_chunks --limit 100
+```
+
+### Buscar chunks similares
+
+```bash
+python -m app.search_chunks "retrieval augmented generation hallucination fact checking" --limit 5
+```
+
+### Verificar conteos de embeddings
+
+```bash
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS total_chunks FROM document_chunks;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_con_embedding FROM document_chunks WHERE embedding IS NOT NULL;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_sin_embedding FROM document_chunks WHERE embedding IS NULL;"
+```
+
+---
+
+## 19. Próximo paso recomendado
+
+El siguiente paso técnico recomendado es mejorar la búsqueda semántica para que sea más útil como base del RAG.
+
+Orden recomendado:
+
+1. Agregar filtros opcionales por documento o tipo documental.
+2. Guardar consultas en `rag_queries`.
+3. Guardar chunks recuperados en `retrieval_logs`.
+4. Crear una capa de recuperación formal.
+5. Construir una respuesta usando los chunks recuperados.
+6. Integrar generación con modelo local.
+7. Integrar posteriormente con OpenClaw y Discord.
+
+No se recomienda avanzar todavía a generación de respuestas sin antes registrar trazabilidad de recuperación, porque la tesis necesita evidenciar qué documentos y fragmentos respaldan cada respuesta.
