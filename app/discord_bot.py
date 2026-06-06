@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 import discord
 from dotenv import load_dotenv
@@ -33,13 +34,28 @@ def get_default_document_id() -> int | None:
 def build_compact_answer(answer: str, query_id: int | None) -> str:
     """
     Construye una respuesta corta para Discord.
-    Conserva la respuesta generada, pero elimina la ficha completa de evaluación.
+    Conserva la respuesta generada, elimina la ficha completa de evaluación
+    y muestra los documentos recuperados como fuentes.
     """
     main_answer = answer.split("\n---\n\nFicha para evaluación")[0].strip()
+
+    document_titles = []
+    for match in re.findall(r"document_title:\s*(.+)", answer):
+        title = match.strip()
+        if title and title not in document_titles:
+            document_titles.append(title)
+
+    if document_titles:
+        sources_block = "Fuentes recuperadas:\n" + "\n".join(
+            f"- {title}" for title in document_titles
+        )
+    else:
+        sources_block = "Fuentes recuperadas: no identificadas en la respuesta compacta."
 
     return (
         f"query_id: {query_id}\n\n"
         f"{main_answer}\n\n"
+        f"{sources_block}\n\n"
         "Para ver la ficha completa de evaluación usá `!rageval` con la misma pregunta."
     )
 

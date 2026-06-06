@@ -1,0 +1,646 @@
+MANUAL OPERATIVO DEL PROTOTIPO RAG
+
+Proyecto:
+Prototipo RAG para tesis
+
+Ruta local:
+/home/diego/rag-tesis
+
+Repositorio:
+https://github.com/diegoarcecast/RAG.git
+
+Objetivo del sistema:
+Este sistema permite cargar documentos académicos y técnicos, extraer texto, dividirlo en chunks, generar embeddings, almacenarlos en PostgreSQL con pgvector, recuperar evidencia documental mediante búsqueda semántica, generar respuestas con un modelo local y consultar el sistema desde terminal o Discord.
+
+============================================================
+
+1. FLUJO GENERAL DEL SISTEMA
+   ============================================================
+
+El flujo completo del sistema es:
+
+1. Colocar documentos en la carpeta local del corpus.
+2. Ejecutar ingesta documental.
+3. Guardar documentos y chunks en PostgreSQL.
+4. Generar embeddings para los chunks nuevos.
+5. Verificar que no existan chunks sin embedding.
+6. Ejecutar consultas RAG desde terminal o Discord.
+7. Registrar trazabilidad en rag_queries y retrieval_logs.
+8. Revisar respuesta, documentos recuperados, chunks, similarity_score, distance y evidencia.
+9. Usar la salida completa para evaluación académica o la salida compacta para Discord.
+
+Flujo técnico resumido:
+
+Documento
+-> extracción de texto
+-> limpieza
+-> chunking
+-> documents / document_chunks
+-> embeddings con nomic-embed-text
+-> pgvector
+-> búsqueda semántica
+-> generación con gemma4:e4b
+-> respuesta
+-> trazabilidad
+-> Discord o terminal
+
+============================================================
+2. INICIAR EL PROYECTO
+======================
+
+Comando:
+
+cd /home/diego/rag-tesis
+source .venv/bin/activate
+
+Explicación línea por línea:
+
+cd /home/diego/rag-tesis
+Entra a la carpeta local del proyecto.
+
+source .venv/bin/activate
+Activa el ambiente virtual de Python. Después de ejecutarlo, la terminal debe mostrar algo como:
+(.venv)
+
+Glosario:
+
+cd
+Cambia de directorio.
+
+source
+Ejecuta un archivo dentro de la sesión actual de terminal.
+
+.venv/bin/activate
+Script que activa el ambiente virtual del proyecto.
+
+Seguridad:
+Seguro. No modifica archivos ni base de datos.
+
+============================================================
+3. VALIDAR CONEXIÓN A POSTGRESQL
+================================
+
+Comando:
+
+python -m app.db_check
+
+Explicación:
+
+python -m app.db_check
+Ejecuta el módulo de validación de conexión a PostgreSQL.
+
+Resultado esperado:
+
+Conexión correcta: base=rag_tesis, usuario=rag_user
+
+Glosario:
+
+python
+Ejecuta Python desde el ambiente virtual.
+
+-m
+Ejecuta un módulo Python como programa.
+
+app.db_check
+Módulo del proyecto encargado de validar la conexión.
+
+Seguridad:
+Seguro. Solo prueba conexión. No modifica datos.
+
+============================================================
+4. COLOCAR DOCUMENTOS NUEVOS
+============================
+
+Carpeta recomendada:
+
+data/raw/samples/
+
+Ejemplo:
+
+data/raw/samples/nuevo_documento.pdf
+
+Formatos soportados por el pipeline:
+
+.pdf
+.docx
+.txt
+.md
+.markdown
+.html
+.htm
+.csv
+.xlsx
+
+Regla importante:
+No subir documentos reales o pesados al repositorio. La carpeta data/raw/ debe mantenerse local salvo archivos controlados y permitidos.
+
+============================================================
+5. CARGAR UN DOCUMENTO INDIVIDUAL
+=================================
+
+Comando recomendado para documento real:
+
+python -m app.ingest_document data/raw/samples/nuevo_documento.pdf --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+
+Explicación:
+
+python -m app.ingest_document
+Ejecuta el comando de ingesta individual.
+
+data/raw/samples/nuevo_documento.pdf
+Ruta del documento que se desea cargar.
+
+--chunk-size 1200
+Define el tamaño aproximado de cada chunk en caracteres.
+
+--chunk-overlap 200
+Define cuántos caracteres se repiten entre chunks consecutivos para no perder contexto.
+
+--min-chunk-size 120
+Evita guardar chunks demasiado pequeños.
+
+--save-db
+Guarda el documento y sus chunks en PostgreSQL.
+
+Glosario:
+
+--chunk-size
+Tamaño máximo aproximado del fragmento documental.
+
+--chunk-overlap
+Solapamiento entre fragmentos para preservar continuidad.
+
+--min-chunk-size
+Tamaño mínimo aceptado para guardar un chunk.
+
+--save-db
+Indica que el resultado debe persistirse en la base de datos.
+
+Seguridad:
+Modifica la base de datos porque inserta registros en documents y document_chunks. No borra información existente.
+
+============================================================
+6. CARGAR UNA CARPETA COMPLETA DE DOCUMENTOS
+============================================
+
+Comando recomendado:
+
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+
+Explicación:
+
+python -m app.ingest_folder
+Ejecuta la ingesta por carpeta.
+
+data/raw/samples
+Carpeta donde están los documentos a procesar.
+
+--chunk-size 1200
+Define el tamaño aproximado de los chunks.
+
+--chunk-overlap 200
+Define el solapamiento entre chunks.
+
+--min-chunk-size 120
+Evita chunks demasiado pequeños.
+
+--save-db
+Guarda los documentos y chunks en PostgreSQL.
+
+Seguridad:
+Modifica la base de datos. Puede insertar varios documentos y muchos chunks. Revisar bien la carpeta antes de ejecutarlo.
+
+============================================================
+7. GENERAR EMBEDDINGS PARA CHUNKS NUEVOS
+========================================
+
+Comando:
+
+python -m app.embed_chunks --limit 100
+
+Explicación:
+
+python -m app.embed_chunks
+Ejecuta el proceso de generación de embeddings.
+
+--limit 100
+Procesa hasta 100 chunks pendientes en ese lote.
+
+Glosario:
+
+embedding
+Representación vectorial del texto.
+
+--limit
+Cantidad máxima de chunks a procesar en una ejecución.
+
+nomic-embed-text
+Modelo local utilizado para generar embeddings.
+
+Seguridad:
+Modifica la base de datos porque actualiza document_chunks.embedding. No borra documentos ni chunks.
+
+Nota:
+Si hay muchos chunks pendientes, ejecutar el comando varias veces hasta que no queden chunks sin embedding.
+
+============================================================
+8. VERIFICAR CONTEOS DE CHUNKS Y EMBEDDINGS
+===========================================
+
+Comandos:
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS total_chunks FROM document_chunks;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_con_embedding FROM document_chunks WHERE embedding IS NOT NULL;"
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_sin_embedding FROM document_chunks WHERE embedding IS NULL;"
+
+Explicación:
+
+Primer comando:
+Cuenta todos los chunks existentes.
+
+Segundo comando:
+Cuenta los chunks que ya tienen embedding.
+
+Tercer comando:
+Cuenta los chunks que todavía no tienen embedding.
+
+Glosario:
+
+psql
+Cliente de PostgreSQL desde terminal.
+
+-h localhost
+Indica que PostgreSQL está en la máquina local.
+
+-U rag_user
+Usa el usuario rag_user.
+
+-d rag_tesis
+Usa la base de datos rag_tesis.
+
+-P pager=off
+Evita que PostgreSQL abra el paginador.
+
+-c
+Ejecuta una consulta SQL directa desde terminal.
+
+IS NOT NULL
+Filtra registros donde el campo tiene valor.
+
+IS NULL
+Filtra registros donde el campo está vacío.
+
+Seguridad:
+Seguro. Solo consulta información. No modifica datos.
+
+============================================================
+9. PROBAR BÚSQUEDA SEMÁNTICA
+============================
+
+Comando:
+
+python -m app.search_chunks "retrieval augmented generation hallucination fact checking" --limit 5
+
+Explicación:
+
+python -m app.search_chunks
+Ejecuta búsqueda semántica sobre los chunks vectorizados.
+
+"retrieval augmented generation hallucination fact checking"
+Consulta en lenguaje natural.
+
+--limit 5
+Devuelve hasta 5 chunks similares.
+
+Seguridad:
+Seguro. Solo consulta. No modifica base de datos.
+
+============================================================
+10. EJECUTAR CONSULTA RAG DESDE TERMINAL
+========================================
+
+Comando general:
+
+python -m app.ask_rag "Pregunta o consulta" --limit 3 --document-id 10 --channel terminal --model gemma4:e4b
+
+Ejemplo validado:
+
+python -m app.ask_rag "¿Cuál es el objetivo principal de Kali Linux?" --limit 3 --document-id 10 --channel terminal --model gemma4:e4b
+
+Explicación:
+
+python -m app.ask_rag
+Ejecuta el comando formal de consulta RAG.
+
+"¿Cuál es el objetivo principal de Kali Linux?"
+Pregunta enviada al sistema.
+
+--limit 3
+Recupera máximo 3 chunks.
+
+--document-id 10
+Filtra la búsqueda a un documento específico.
+
+--channel terminal
+Registra que la consulta se hizo desde terminal.
+
+--model gemma4:e4b
+Usa el modelo generativo gemma4:e4b.
+
+Seguridad:
+Registra consulta en rag_queries, registra chunks recuperados en retrieval_logs y actualiza rag_queries.answer. No modifica documentos ni chunks.
+
+============================================================
+11. INICIAR EL BOT DE DISCORD
+=============================
+
+Antes de iniciar:
+El archivo .env debe tener:
+
+DISCORD_BOT_TOKEN=TOKEN_REAL
+DISCORD_COMMAND_PREFIX=!rag
+DISCORD_DEFAULT_DOCUMENT_ID=10
+DISCORD_DEFAULT_LIMIT=3
+DISCORD_DEFAULT_MODEL=gemma4:e4b
+
+No subir .env a GitHub.
+
+Comando para iniciar:
+
+cd /home/diego/rag-tesis
+source .venv/bin/activate
+python -m app.discord_bot
+
+Explicación:
+
+cd /home/diego/rag-tesis
+Entra al proyecto.
+
+source .venv/bin/activate
+Activa el ambiente virtual.
+
+python -m app.discord_bot
+Inicia el bot de Discord.
+
+Resultado esperado:
+
+Bot conectado como RAG#1941
+Comando compacto activo: !rag <pregunta>
+Comando evaluación activo: !rageval <pregunta>
+
+Seguridad:
+El bot queda corriendo mientras la terminal esté abierta. No imprime el token. No subir .env.
+
+============================================================
+12. USAR EL BOT EN DISCORD
+==========================
+
+Respuesta compacta para usuario:
+
+!rag ¿Cuál es el objetivo principal de Kali Linux?
+
+Respuesta completa para evaluación:
+
+!rageval ¿Cuál es el objetivo principal de Kali Linux?
+
+Diferencia:
+
+!rag
+Devuelve respuesta corta, query_id y fuentes recuperadas.
+
+!rageval
+Devuelve respuesta completa con ficha de evaluación, chunks, similarity_score, distance y evidencia.
+
+Seguridad:
+Cada consulta registra trazabilidad en rag_queries y retrieval_logs.
+
+============================================================
+13. DETENER EL BOT DE DISCORD
+=============================
+
+Comando:
+
+Ctrl + C
+
+Explicación:
+
+Ctrl + C
+Interrumpe el proceso activo del bot en la terminal.
+
+Seguridad:
+Seguro. Solo detiene el bot local.
+
+Si quedó corriendo en otra terminal:
+
+ps aux | grep "app.discord_bot"
+pkill -f "app.discord_bot"
+ps aux | grep "app.discord_bot"
+
+Explicación:
+
+ps aux | grep "app.discord_bot"
+Busca procesos relacionados con el bot.
+
+pkill -f "app.discord_bot"
+Detiene procesos cuyo comando contiene app.discord_bot.
+
+ps aux | grep "app.discord_bot"
+Verifica si todavía queda activo.
+
+Glosario:
+
+ps aux
+Lista procesos activos.
+
+grep
+Filtra texto.
+
+pkill
+Detiene procesos.
+
+-f
+Busca coincidencias en toda la línea del comando.
+
+Seguridad:
+Usar pkill solo si se está seguro de que se quiere detener el bot.
+
+============================================================
+14. LIMPIAR UNA INGESTA POR FILE_PATH
+=====================================
+
+Usar solo si se cargó un documento por error.
+
+Comando:
+
+python - <<'PY'
+from app.ingestion.repository import delete_document_by_file_path
+
+file_path = "/home/diego/rag-tesis/data/raw/samples/nuevo_documento.pdf"
+
+deleted = delete_document_by_file_path(file_path)
+
+print(f"Documentos eliminados: {deleted}")
+PY
+
+Explicación:
+
+delete_document_by_file_path
+Busca documentos en la tabla documents por su ruta file_path y los elimina.
+
+ON DELETE CASCADE
+Al eliminar el documento, PostgreSQL elimina automáticamente sus chunks asociados en document_chunks.
+
+Riesgo:
+Alto si se coloca mal el file_path. Puede eliminar documentos y chunks cargados en la base de datos.
+
+Regla:
+Verificar muy bien el file_path antes de ejecutar.
+
+============================================================
+15. REVISAR TRAZABILIDAD EN POSTGRESQL
+======================================
+
+Últimas consultas RAG:
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT id, question, channel, model_name, created_at FROM rag_queries ORDER BY id DESC LIMIT 10;"
+
+Chunks recuperados para una consulta:
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT query_id, chunk_id, similarity_score, rank_position FROM retrieval_logs WHERE query_id = 20 ORDER BY rank_position;"
+
+Explicación:
+
+Primera consulta:
+Muestra las últimas 10 consultas registradas.
+
+Segunda consulta:
+Muestra los chunks recuperados para un query_id específico.
+
+Nota:
+Cambiar query_id = 20 por el identificador real de la consulta que se desea revisar.
+
+Seguridad:
+Seguro. Solo consulta datos.
+
+============================================================
+16. ARCHIVOS IMPORTANTES DEL SISTEMA
+====================================
+
+app/ingest_document.py
+Carga un documento individual.
+
+app/ingest_folder.py
+Carga documentos por carpeta.
+
+app/embed_chunks.py
+Genera embeddings para chunks pendientes.
+
+app/search_chunks.py
+Prueba búsqueda semántica.
+
+app/ask_rag.py
+Ejecuta una consulta RAG desde terminal.
+
+app/openclaw_adapter.py
+Adaptador reutilizable para canales conversacionales.
+
+app/discord_bot.py
+Bot directo de Discord.
+
+app/rag_answer_service.py
+Servicio principal que recupera chunks, genera respuesta y arma ficha de evaluación.
+
+app/rag_trace_repository.py
+Registra consultas, logs de recuperación y respuesta final.
+
+app/retrieval_service.py
+Capa de recuperación semántica con trazabilidad.
+
+============================================================
+17. REGLAS DE SEGURIDAD
+=======================
+
+No subir al repositorio:
+
+.env
+.venv/
+logs/
+data/processed/
+documentos reales dentro de data/raw/
+tokens de Discord
+credenciales de base de datos
+archivos temporales o basura
+
+Antes de cada commit ejecutar:
+
+git status
+
+Si aparece .env, detenerse y corregir .gitignore antes de continuar.
+
+============================================================
+18. COMMIT RECOMENDADO DESPUÉS DE CAMBIOS
+=========================================
+
+Revisar estado:
+
+git status
+
+Agregar solo archivos seguros:
+
+git add app/discord_bot.py manual.txt
+
+Crear commit:
+
+git commit -m "Add Discord compact response and operational manual"
+
+Subir a GitHub:
+
+git push origin main
+
+Verificar estado final:
+
+git status
+
+Seguridad:
+No agregar .env. No usar git add . si no se ha revisado antes el estado del repositorio.
+
+============================================================
+19. RESUMEN DE USO RÁPIDO
+=========================
+
+Iniciar proyecto:
+
+cd /home/diego/rag-tesis
+source .venv/bin/activate
+
+Cargar documentos nuevos:
+
+python -m app.ingest_folder data/raw/samples --chunk-size 1200 --chunk-overlap 200 --min-chunk-size 120 --save-db
+
+Generar embeddings:
+
+python -m app.embed_chunks --limit 100
+
+Verificar chunks sin embedding:
+
+psql -h localhost -U rag_user -d rag_tesis -P pager=off -c "SELECT COUNT(*) AS chunks_sin_embedding FROM document_chunks WHERE embedding IS NULL;"
+
+Probar RAG por terminal:
+
+python -m app.ask_rag "¿Cuál es el objetivo principal de Kali Linux?" --limit 3 --document-id 10 --channel terminal --model gemma4:e4b
+
+Iniciar bot Discord:
+
+python -m app.discord_bot
+
+Usar Discord:
+
+!rag pregunta
+!rageval pregunta
+
+Detener bot:
+
+Ctrl + C
+
