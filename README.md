@@ -1669,3 +1669,164 @@ Estado:
 
 La recuperación semántica ya está encapsulada en una capa reutilizable.
 El siguiente paso técnico recomendado es construir la primera generación de respuesta usando los chunks recuperados, manteniendo la respuesta vinculada a la evidencia documental.
+
+23. Generación de respuestas RAG con modelo local
+Se implementó la primera versión funcional de generación de respuestas RAG usando un modelo local de Ollama.
+
+Archivos agregados:
+
+app/generation/__init__.py
+app/generation/ollama_generation_client.py
+app/rag_answer_service.py
+
+Archivo actualizado:
+
+app/rag_trace_repository.py
+
+Modelo usado para generación:
+
+gemma4:e4b
+
+Modelo usado para embeddings:
+
+nomic-embed-text
+
+Cliente de generación:
+
+app/generation/ollama_generation_client.py
+
+Responsabilidad:
+
+Enviar prompts al endpoint local de Ollama.
+Usar /api/generate.
+Recibir una respuesta completa con stream=False.
+Permitir configurar modelo y temperatura.
+
+Endpoint usado:
+
+http://localhost:11434/api/generate
+
+Función principal:
+
+generate_text()
+
+Servicio RAG de respuesta:
+
+app/rag_answer_service.py
+
+Funciones principales:
+
+build_context()
+build_prompt()
+generate_rag_answer()
+
+Flujo implementado:
+
+Pregunta del usuario.
+Recuperación semántica con retrieve_chunks().
+Registro de consulta en rag_queries.
+Registro de chunks recuperados en retrieval_logs.
+Construcción de contexto documental.
+Construcción de prompt con reglas de respuesta basada en evidencia.
+Generación de respuesta con gemma4:e4b.
+Actualización de rag_queries.answer con la respuesta generada.
+
+Cadena funcional actual:
+
+pregunta
+ -> retrieve_chunks(trace=True)
+ -> rag_queries
+ -> retrieval_logs
+ -> contexto documental
+ -> Ollama gemma4:e4b
+ -> respuesta generada
+ -> rag_queries.answer
+
+24. Validaciones de generación RAG
+Validación 1: documento OCR en español
+
+Pregunta:
+
+¿Cuál es el objetivo principal de Kali Linux?
+
+Parámetros:
+
+document_id = 10
+limit = 3
+generation_model = gemma4:e4b
+channel = terminal
+
+Resultado validado:
+
+query_id = 7
+La respuesta fue generada correctamente.
+La respuesta quedó guardada en rag_queries.answer.
+Se registraron 3 chunks en retrieval_logs.
+Todos los chunks correspondieron a KALI LINUX.pdf.
+
+Respuesta generada resumida:
+
+El objetivo principal de Kali Linux es ofrecer un entorno controlado con herramientas especializadas para evaluar la seguridad de sistemas, redes y aplicaciones. Además, es una distribución orientada a pruebas de seguridad, auditorías técnicas y análisis forense digital.
+
+Fuentes usadas:
+
+KALI LINUX.pdf, chunk_id 646
+KALI LINUX.pdf, chunk_id 645
+KALI LINUX.pdf, chunk_id 643
+
+Validación 2: documento académico en inglés
+
+Pregunta:
+
+How does retrieval augmented generation help reduce hallucinations in fact checking systems?
+
+Parámetros:
+
+document_id = 9
+limit = 4
+generation_model = gemma4:e4b
+channel = terminal
+
+Resultado validado:
+
+query_id = 8
+La respuesta fue generada correctamente.
+La respuesta quedó guardada en rag_queries.answer.
+Se registraron 4 chunks en retrieval_logs.
+Todos los chunks correspondieron a Hallucination to Truth_ A Review of Fact-Checking and Factuality Evaluation in Large Language Models.html.
+
+Chunks registrados:
+
+chunk_id 487
+chunk_id 493
+chunk_id 548
+chunk_id 494
+
+Observación:
+
+La respuesta explicó que RAG ayuda a reducir alucinaciones al fundamentar la salida del modelo en evidencia externa verificable, recuperar citaciones, verificar contra fuentes externas, usar bases curadas, knowledge graphs y mecanismos de revisión factual.
+
+Estado actual actualizado:
+
+El prototipo ya tiene funcionando:
+
+Ingesta documental.
+Extracción OCR.
+Chunking.
+Persistencia en PostgreSQL.
+Embeddings con Ollama.
+Almacenamiento vectorial con pgvector.
+Búsqueda semántica global.
+Búsqueda semántica filtrada por document_id y source_type.
+Registro de consultas en rag_queries.
+Registro de chunks recuperados en retrieval_logs.
+Capa formal de recuperación reutilizable.
+Generación de respuestas con modelo local.
+Actualización de rag_queries.answer.
+Trazabilidad completa entre pregunta, respuesta y evidencia documental.
+
+Pendiente técnico siguiente:
+
+Mejorar el formato de salida de fuentes.
+Crear comando de terminal formal para ejecutar preguntas RAG sin usar bloques temporales de Python.
+Agregar métricas iniciales de evaluación: relevancia de recuperación, cobertura de evidencia, fidelidad de respuesta y trazabilidad.

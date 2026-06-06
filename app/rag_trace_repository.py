@@ -156,3 +156,28 @@ def get_query_retrieval_trace(query_id: int) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def update_rag_query_answer(query_id: int, answer: str) -> None:
+    """
+    Actualiza la respuesta generada para una consulta RAG existente.
+    """
+    if query_id <= 0:
+        raise ValueError("query_id debe ser mayor que 0.")
+
+    if answer is None:
+        raise ValueError("answer no puede ser None.")
+
+    sql = """
+        UPDATE rag_queries
+        SET answer = %s
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (answer, query_id))
+            conn.commit()
+
+            if cur.rowcount == 0:
+                raise RuntimeError(f"No existe rag_query con id={query_id}.")
