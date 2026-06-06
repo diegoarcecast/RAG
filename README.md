@@ -1830,3 +1830,194 @@ Pendiente técnico siguiente:
 Mejorar el formato de salida de fuentes.
 Crear comando de terminal formal para ejecutar preguntas RAG sin usar bloques temporales de Python.
 Agregar métricas iniciales de evaluación: relevancia de recuperación, cobertura de evidencia, fidelidad de respuesta y trazabilidad.
+
+25. Formato de respuesta evaluable para Discord/OpenClaw
+Se ajustó el formato de respuesta RAG para que cada consulta ejecutada por el agente pueda devolver, junto con la respuesta, una ficha técnica de evidencia recuperada.
+
+Objetivo:
+
+Permitir que las consultas realizadas desde terminal, Discord u OpenClaw puedan ser evaluadas posteriormente en una matriz o archivo Excel sin necesidad de consultar manualmente PostgreSQL.
+
+La respuesta generada debe incluir:
+
+Respuesta en lenguaje natural.
+Separador visual.
+Ficha para evaluación.
+Datos de recuperación.
+Evidencia recuperada por chunk.
+
+Formato general esperado:
+
+Respuesta generada por el modelo con base en la evidencia documental recuperada.
+
+---
+
+Ficha para evaluación
+
+query_id: identificador de la consulta registrada en rag_queries
+pregunta: pregunta realizada por la persona usuaria
+modelo_generacion: modelo usado para generar la respuesta
+modelo_embeddings: modelo usado para generar embeddings
+limite_recuperacion: cantidad máxima de chunks recuperados
+filtro_document_id: documento filtrado, si aplica
+filtro_source_type: tipo documental filtrado, si aplica
+cantidad_chunks_recuperados: cantidad real de chunks usados como contexto
+
+Evidencia recuperada:
+
+rank_position
+document_title
+document_id
+source_type
+chunk_id
+chunk_index
+similarity_score
+distance
+clasificacion_preliminar
+evidencia
+
+Campos incluidos en la ficha:
+
+query_id:
+Permite relacionar la respuesta con el registro guardado en rag_queries.
+
+pregunta:
+Permite identificar la consulta original realizada por la persona usuaria.
+
+modelo_generacion:
+Permite saber qué modelo local generó la respuesta. Actualmente se validó con gemma4:e4b.
+
+modelo_embeddings:
+Permite saber qué modelo generó los vectores usados para recuperación. Actualmente se usa nomic-embed-text.
+
+limite_recuperacion:
+Permite saber cuántos chunks fueron solicitados al mecanismo de recuperación.
+
+filtro_document_id:
+Permite saber si la búsqueda fue restringida a un documento específico.
+
+filtro_source_type:
+Permite saber si la búsqueda fue restringida a un tipo documental, por ejemplo pdf, html o xlsx.
+
+cantidad_chunks_recuperados:
+Permite saber cuántos chunks fueron usados para construir el contexto.
+
+rank_position:
+Indica el orden en que el chunk fue recuperado.
+
+document_title:
+Indica el documento fuente del chunk.
+
+document_id:
+Identificador del documento en PostgreSQL.
+
+source_type:
+Tipo documental detectado durante la ingesta.
+
+chunk_id:
+Identificador único del fragmento documental en document_chunks.
+
+chunk_index:
+Posición del chunk dentro del documento.
+
+similarity_score:
+Puntaje aproximado de similitud. Se calcula como 1 - distance.
+
+distance:
+Distancia vectorial devuelta por pgvector. Una distancia menor indica mayor cercanía semántica.
+
+clasificacion_preliminar:
+Clasificación automática orientativa basada en rank_position y similarity_score. No sustituye la evaluación humana.
+
+evidencia:
+Fragmento corto del chunk recuperado, limpiado y recortado para facilitar la revisión.
+
+26. Criterios sugeridos para matriz de evaluación en Excel
+Los siguientes campos se recomiendan para la matriz de evaluación manual de la tesis. No se muestran directamente en cada respuesta de Discord/OpenClaw para evitar saturar al usuario final.
+
+Columnas sugeridas:
+
+query_id
+pregunta
+respuesta
+modelo_generacion
+modelo_embeddings
+document_id
+document_title
+chunk_id
+chunk_index
+rank_position
+similarity_score
+distance
+evidencia
+relevancia_recuperacion
+fidelidad_respuesta
+completitud_respuesta
+exactitud_citas
+riesgo_alucinacion
+observaciones
+
+Descripción de criterios manuales:
+
+relevancia_recuperacion:
+Evalúa si los chunks recuperados tienen relación directa con la pregunta.
+
+fidelidad_respuesta:
+Evalúa si la respuesta se mantiene fiel a la evidencia recuperada y no agrega información no sustentada.
+
+completitud_respuesta:
+Evalúa si la respuesta cubre adecuadamente lo preguntado con base en la evidencia disponible.
+
+exactitud_citas:
+Evalúa si las fuentes, documentos y chunk_id citados corresponden realmente al contenido usado.
+
+riesgo_alucinacion:
+Evalúa si la respuesta contiene afirmaciones no respaldadas por los chunks recuperados.
+
+observaciones:
+Permite anotar comentarios cualitativos del evaluador.
+
+Escala sugerida:
+
+1 = deficiente
+2 = bajo
+3 = aceptable
+4 = bueno
+5 = excelente
+
+27. Ajuste de salida para evaluación
+Se eliminó de la respuesta automática el bloque de campos vacíos de evaluación manual.
+
+Antes, la respuesta incluía:
+
+relevancia_recuperacion: ___
+fidelidad_respuesta: ___
+completitud_respuesta: ___
+exactitud_citas: ___
+riesgo_alucinacion: ___
+observaciones: ___
+
+Ese bloque fue retirado de la salida del agente y documentado en README como recomendación metodológica para Excel.
+
+Razón:
+
+La respuesta del agente debe ser útil para la persona usuaria y, al mismo tiempo, proporcionar evidencia técnica suficiente para evaluación. Los campos de calificación manual pertenecen a la matriz de análisis del investigador, no necesariamente al mensaje que recibe cada usuario en Discord.
+
+Estado actual actualizado:
+
+El prototipo ya permite:
+
+Responder preguntas con un modelo local.
+Usar chunks recuperados como contexto.
+Registrar pregunta y respuesta en rag_queries.
+Registrar chunks recuperados en retrieval_logs.
+Mostrar evidencia recuperada en la respuesta.
+Exponer query_id, documentos, chunk_id, ranking, similarity_score y distance.
+Facilitar el traslado de datos a una matriz de evaluación en Excel.
+Evitar saturar la respuesta con campos de calificación manual.
+
+Pendiente técnico siguiente:
+
+Crear un comando formal de terminal para ejecutar preguntas RAG sin usar bloques temporales de Python.
+Preparar una salida compacta para Discord en caso de que el mensaje exceda el límite permitido.
+Diseñar la matriz Excel definitiva de evaluación de calidad de recuperación, trazabilidad y fidelidad de respuesta.
