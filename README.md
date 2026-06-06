@@ -2021,3 +2021,36 @@ Pendiente técnico siguiente:
 Crear un comando formal de terminal para ejecutar preguntas RAG sin usar bloques temporales de Python.
 Preparar una salida compacta para Discord en caso de que el mensaje exceda el límite permitido.
 Diseñar la matriz Excel definitiva de evaluación de calidad de recuperación, trazabilidad y fidelidad de respuesta.
+
+---
+
+## Comando formal para consultas RAG
+
+El proyecto incorpora el comando `app.ask_rag` para ejecutar consultas RAG desde terminal sin usar bloques temporales de Python.
+
+Este comando utiliza internamente `generate_rag_answer()` y muestra directamente `result.answer`, por lo que conserva el mismo formato validado del sistema:
+
+* respuesta generada por el modelo;
+* ficha para evaluación manual;
+* `query_id`;
+* documentos y chunks recuperados;
+* puntajes de similitud y distancia;
+* evidencia textual recuperada.
+
+### Uso general
+
+```bash
+python -m app.ask_rag "Pregunta o consulta" --limit 3 --document-id 10 --channel terminal --model gemma4:e4b
+
+Ejemplo validado
+python -m app.ask_rag "¿Cuál es el objetivo principal de Kali Linux?" --limit 3 --document-id 10 --channel discord-openclaw-test --model gemma4:e4b
+
+Resultado validado:
+
+respuesta correcta sobre el objetivo principal de Kali Linux;
+recuperación desde KALI LINUX.pdf;
+generación de ficha para evaluación;
+registro de trazabilidad en rag_queries y retrieval_logs;
+chunks recuperados esperados: 646, 645 y 643.
+
+Este comando será utilizado como base para la integración posterior con OpenClaw y Discord.
