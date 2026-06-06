@@ -1595,3 +1595,77 @@ Trazabilidad básica de recuperación documental.
 Pendiente técnico siguiente:
 
 Crear una capa formal de recuperación reutilizable, por ejemplo app/retrieval_service.py, para que la lógica de recuperación pueda ser usada posteriormente por generación de respuestas, evaluación técnica, OpenClaw y Discord.
+
+22. Capa formal de recuperación reutilizable
+Se creó una capa de servicio para centralizar la recuperación semántica y la trazabilidad documental.
+
+Archivo agregado:
+
+app/retrieval_service.py
+
+Objetivo:
+
+Evitar que la lógica de recuperación quede acoplada únicamente a comandos de terminal.
+Permitir que la recuperación pueda ser reutilizada por generación de respuestas, pruebas de evaluación, OpenClaw, Discord o una API futura.
+
+Funciones principales:
+
+retrieve_chunks()
+retrieval_result_to_dict()
+get_trace()
+
+Responsabilidad de retrieve_chunks():
+
+Recibir una consulta en lenguaje natural.
+Generar el embedding de la consulta.
+Buscar chunks similares con pgvector.
+Aplicar filtros opcionales por document_id o source_type.
+Retornar chunks recuperados con ranking, documento, distancia y similarity_score.
+Registrar trazabilidad cuando trace=True.
+
+Parámetros principales:
+
+query
+limit
+document_id
+source_type
+trace
+channel
+model_name
+
+Modo sin trazabilidad:
+
+retrieve_chunks(
+    query="PostgreSQL JSONB operators and querying JSON documents",
+    limit=3,
+    document_id=12,
+    trace=False
+)
+
+Resultado validado:
+
+query_id = None
+chunks = 3
+Todos los resultados recuperados correspondieron a PostgreSQLNotesForProfessionals.pdf.
+
+Modo con trazabilidad:
+
+retrieve_chunks(
+    query="PostgreSQL JSONB operators and querying JSON documents",
+    limit=3,
+    document_id=12,
+    trace=True,
+    channel="terminal"
+)
+
+Resultado validado:
+
+query_id = 6
+chunks = 3
+Los resultados fueron registrados en rag_queries y retrieval_logs.
+Todos los chunks recuperados correspondieron a PostgreSQLNotesForProfessionals.pdf.
+
+Estado:
+
+La recuperación semántica ya está encapsulada en una capa reutilizable.
+El siguiente paso técnico recomendado es construir la primera generación de respuesta usando los chunks recuperados, manteniendo la respuesta vinculada a la evidencia documental.
