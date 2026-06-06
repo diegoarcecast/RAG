@@ -21,6 +21,20 @@ def parse_arguments() -> argparse.Namespace:
         help="Cantidad máxima de chunks similares a mostrar.",
     )
 
+    parser.add_argument(
+        "--document-id",
+        type=int,
+        default=None,
+        help="Filtra la búsqueda por document_id.",
+    )
+
+    parser.add_argument(
+        "--source-type",
+        type=str,
+        default=None,
+        help="Filtra la búsqueda por tipo documental, por ejemplo: pdf, html, xlsx.",
+    )
+
     return parser.parse_args()
 
 
@@ -28,7 +42,12 @@ def main() -> None:
     args = parse_arguments()
 
     query_embedding = generate_embedding(args.query)
-    results = search_similar_chunks(query_embedding, limit=args.limit)
+    results = search_similar_chunks(
+        query_embedding,
+        limit=args.limit,
+        document_id=args.document_id,
+        source_type=args.source_type,
+    )
 
     print("Consulta:", args.query)
     print("Resultados:", len(results))

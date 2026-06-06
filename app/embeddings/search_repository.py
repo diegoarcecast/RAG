@@ -1,7 +1,12 @@
 from app.db import get_connection
 
 
-def search_similar_chunks(query_embedding: list[float], limit: int = 5) -> list[dict]:
+def search_similar_chunks(
+    query_embedding: list[float],
+    limit: int = 5,
+    document_id: int | None = None,
+    source_type: str | None = None,
+) -> list[dict]:
     if not query_embedding:
         raise ValueError("query_embedding no puede estar vacío.")
 
@@ -10,7 +15,20 @@ def search_similar_chunks(query_embedding: list[float], limit: int = 5) -> list[
 
     embedding_as_text = "[" + ",".join(str(value) for value in query_embedding) + "]"
 
-    query = """
+    filters = ["c.embedding IS NOT NULL"]
+    params: list = [embedding_as_text]
+
+    if document_id is not None:
+        filters.append("c.document_id = %s")
+        params.append(document_id)
+
+    if source_type is not None:
+        filters.append("d.source_type = %s")
+        params.append(source_type)
+
+    where_clause = " AND ".join(filters)
+
+    query = f"""
         SELECT
             c.id AS chunk_id,
             c.document_id,
@@ -21,14 +39,17 @@ def search_similar_chunks(query_embedding: list[float], limit: int = 5) -> list[
             c.embedding <=> %s::vector AS distance
         FROM document_chunks c
         INNER JOIN documents d ON d.id = c.document_id
-        WHERE c.embedding IS NOT NULL
+        WHERE {where_clause}
         ORDER BY c.embedding <=> %s::vector
         LIMIT %s;
     """
 
+    params.append(embedding_as_text)
+    params.append(limit)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (embedding_as_text, embedding_as_text, limit))
+            cur.execute(query, params)
             rows = cur.fetchall()
 
     return [

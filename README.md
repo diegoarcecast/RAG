@@ -1474,3 +1474,124 @@ Orden recomendado:
 7. Integrar posteriormente con OpenClaw y Discord.
 
 No se recomienda avanzar todavía a generación de respuestas sin antes registrar trazabilidad de recuperación, porque la tesis necesita evidenciar qué documentos y fragmentos respaldan cada respuesta.
+
+20. Implementación de trazabilidad de recuperación
+Se implementó una primera versión funcional de trazabilidad para consultas RAG.
+
+Archivos agregados:
+
+app/rag_trace_repository.py
+app/search_chunks_trace.py
+
+Objetivo:
+
+Registrar cada consulta realizada al sistema.
+Guardar los chunks recuperados por la búsqueda semántica.
+Conservar el orden de recuperación mediante rank_position.
+Guardar un puntaje de similitud aproximado mediante similarity_score.
+Relacionar cada consulta con su evidencia documental.
+
+Tablas utilizadas:
+
+rag_queries
+retrieval_logs
+
+Estructura usada de rag_queries:
+
+id
+question
+answer
+channel
+model_name
+created_at
+
+Estructura usada de retrieval_logs:
+
+id
+query_id
+chunk_id
+similarity_score
+rank_position
+created_at
+
+Relaciones:
+
+retrieval_logs.query_id -> rag_queries.id
+retrieval_logs.chunk_id -> document_chunks.id
+
+Comando implementado:
+
+python -m app.search_chunks_trace "consulta en lenguaje natural" --limit 5 --channel terminal
+
+Ejemplo validado con documento OCR en español:
+
+python -m app.search_chunks_trace "objetivo principal de Kali Linux herramientas evaluar seguridad sistemas redes aplicaciones" --limit 5 --channel terminal
+
+Resultado validado:
+
+query_id = 1
+Se registró la consulta en rag_queries.
+Se registraron 5 resultados en retrieval_logs.
+Los primeros 4 resultados correspondieron a KALI LINUX.pdf.
+El resultado Rank 1 obtuvo similarity_score aproximado de 0.8166.
+
+Observación técnica:
+
+La recuperación depende de la correspondencia entre el idioma de la consulta y el idioma del documento. Para documentos en español, las consultas en español recuperan mejor. Para documentos técnicos en inglés, las consultas en inglés recuperan mejor.
+
+21. Filtros opcionales en búsqueda semántica
+Se agregaron filtros opcionales para mejorar la precisión de recuperación.
+
+Archivos modificados:
+
+app/embeddings/search_repository.py
+app/search_chunks.py
+app/search_chunks_trace.py
+
+Filtros agregados:
+
+--document-id
+--source-type
+
+Uso de búsqueda normal filtrada por documento:
+
+python -m app.search_chunks "PostgreSQL JSONB operators and querying JSON documents" --limit 5 --document-id 12
+
+Uso de búsqueda normal filtrada por tipo documental:
+
+python -m app.search_chunks "PostgreSQL JSONB operators and querying JSON documents" --limit 5 --source-type pdf
+
+Uso de búsqueda trazable filtrada por documento:
+
+python -m app.search_chunks_trace "PostgreSQL JSONB operators and querying JSON documents" --limit 5 --document-id 12 --channel terminal
+
+Resultado validado:
+
+La búsqueda filtrada con --document-id 12 recuperó únicamente chunks de PostgreSQLNotesForProfessionals.pdf.
+La búsqueda trazable filtrada registró query_id = 5.
+Los 5 resultados registrados quedaron asociados al documento PostgreSQLNotesForProfessionals.pdf.
+
+Justificación técnica:
+
+La búsqueda global puede recuperar chunks semánticamente cercanos desde documentos no deseados. Los filtros permiten delimitar la recuperación por documento o tipo documental, lo cual mejora el control experimental y permite evaluar la calidad de recuperación en escenarios más específicos.
+
+Estado actual actualizado:
+
+El sistema ya tiene funcionando:
+
+Ingesta documental individual.
+Ingesta documental por carpeta.
+Extracción OCR.
+Chunking.
+Persistencia en PostgreSQL.
+Generación de embeddings con Ollama.
+Búsqueda semántica global con pgvector.
+Búsqueda semántica filtrada por documento.
+Búsqueda semántica filtrada por tipo documental.
+Registro de consultas en rag_queries.
+Registro de chunks recuperados en retrieval_logs.
+Trazabilidad básica de recuperación documental.
+
+Pendiente técnico siguiente:
+
+Crear una capa formal de recuperación reutilizable, por ejemplo app/retrieval_service.py, para que la lógica de recuperación pueda ser usada posteriormente por generación de respuestas, evaluación técnica, OpenClaw y Discord.
