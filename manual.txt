@@ -1,7 +1,10 @@
-MANUAL OPERATIVO DEL PROTOTIPO RAG
+MANUAL OPERATIVO AUXILIAR DEL PROTOTIPO RAG
+
+Documento auxiliar:
+Este manual se conserva como referencia operativa. La documentación maestra vigente es README.md.
 
 Proyecto:
-Prototipo RAG para tesis
+Diseño, implementación y validación técnica de un prototipo RAG con integración conversacional para evaluar la calidad, trazabilidad y confiabilidad de respuestas en consultas documentales académicas y técnicas en un entorno controlado de validación tecnológica.
 
 Ruta local:
 /home/diego/rag-tesis
@@ -361,11 +364,16 @@ El archivo .env debe tener:
 
 DISCORD_BOT_TOKEN=TOKEN_REAL
 DISCORD_COMMAND_PREFIX=!rag
-DISCORD_DEFAULT_DOCUMENT_ID=10
+DISCORD_EVAL_COMMAND_PREFIX=!rageval
+DISCORD_DEFAULT_DOCUMENT_ID=
 DISCORD_DEFAULT_LIMIT=3
 DISCORD_DEFAULT_MODEL=gemma4:e4b
+DISCORD_EMBEDDING_MODEL=bge-m3
 
 No subir .env a GitHub.
+
+Importante:
+DISCORD_DEFAULT_DOCUMENT_ID debe quedar vacío si se desea buscar en todo el corpus. Usar un valor fijo, por ejemplo 10, limita la recuperación a un único documento y puede ocultar evidencia relevante.
 
 Comando para iniciar:
 

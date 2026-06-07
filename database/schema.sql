@@ -45,3 +45,17 @@ ON document_chunks(document_id);
 
 CREATE INDEX IF NOT EXISTS idx_document_chunks_metadata
 ON document_chunks USING gin(metadata);
+
+
+CREATE TABLE IF NOT EXISTS chunk_embeddings_bge_m3 (
+    id BIGSERIAL PRIMARY KEY,
+    chunk_id BIGINT NOT NULL REFERENCES document_chunks(id) ON DELETE CASCADE,
+    model_name TEXT NOT NULL DEFAULT 'bge-m3',
+    dimensions INT NOT NULL DEFAULT 1024,
+    embedding vector(1024) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (chunk_id, model_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_bge_m3_chunk_id
+ON chunk_embeddings_bge_m3(chunk_id);
