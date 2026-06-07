@@ -2054,3 +2054,277 @@ registro de trazabilidad en rag_queries y retrieval_logs;
 chunks recuperados esperados: 646, 645 y 643.
 
 Este comando será utilizado como base para la integración posterior con OpenClaw y Discord.
+
+---
+
+## Estado actualizado: consultas RAG desde Discord y recuperación multilingüe BGE-M3
+
+### Resumen del avance
+
+El prototipo RAG ya cuenta con una integración funcional desde Discord mediante un bot desarrollado en Python. La consulta realizada desde Discord se conecta con el flujo RAG del proyecto, recupera evidencia documental desde PostgreSQL con pgvector, genera una respuesta mediante el modelo generativo configurado y devuelve la respuesta al canal conversacional.
+
+Además, se incorporó una ruta de recuperación multilingüe basada en el modelo de embeddings `bge-m3`, con el objetivo de mejorar la recuperación documental cuando la pregunta y los documentos se encuentran en idiomas distintos, especialmente en escenarios español-inglés.
+
+### Flujo actual del sistema
+
+El flujo funcional actual es:
+
+```text
+Usuario en Discord
+    ↓
+Bot de Discord en Python
+    ↓
+app.openclaw_adapter
+    ↓
+Servicio RAG
+    ↓
+Recuperación semántica con embeddings
+    ↓
+PostgreSQL + pgvector
+    ↓
+Generación de respuesta con Gemma
+    ↓
+Registro de trazabilidad
+    ↓
+Respuesta en Discord
+```
+
+### Comandos disponibles en Discord
+
+El bot de Discord soporta dos modos principales:
+
+```text
+!rag pregunta
+```
+
+Devuelve una respuesta compacta para usuario final. Incluye:
+
+* `query_id`;
+* respuesta generada;
+* fuentes documentales recuperadas;
+* indicación para consultar la ficha completa.
+
+```text
+!rageval pregunta
+```
+
+Devuelve la respuesta completa con ficha de evaluación. Incluye:
+
+* `query_id`;
+* pregunta;
+* modelo generativo;
+* modelo de embeddings;
+* límite de recuperación;
+* filtros aplicados;
+* cantidad de chunks recuperados;
+* documentos recuperados;
+* `chunk_id`;
+* `similarity_score`;
+* `distance`;
+* evidencia textual recuperada.
+
+### Ejemplo validado desde Discord
+
+Consulta ejecutada:
+
+```text
+!rag ¿Cómo crear un usuario con contraseña en PostgreSQL?
+```
+
+Resultado funcional esperado:
+
+```text
+query_id: 27
+
+Para crear un usuario con contraseña en PostgreSQL, la evidencia documental proporciona métodos como CREATE ROLE, CREATE USER y el uso de \PASSWORD para evitar exposición de contraseñas en archivos de historial.
+
+Fuentes recuperadas:
+PostgreSQLNotesForProfessionals.pdf
+```
+
+Este caso valida que una consulta formulada en español puede recuperar evidencia desde un documento técnico en inglés utilizando embeddings multilingües con `bge-m3`.
+
+### Recuperación multilingüe con BGE-M3
+
+Se incorporó el modelo `bge-m3` como alternativa de recuperación semántica multilingüe.
+
+El modelo fue descargado localmente mediante Ollama y se verificó que genera vectores de 1024 dimensiones. Por esta razón, no se reutilizó la columna original `document_chunks.embedding`, ya que esa columna almacena embeddings de 768 dimensiones generados con `nomic-embed-text`.
+
+Para evitar romper el flujo original, se creó una tabla separada:
+
+```text
+chunk_embeddings_bge_m3
+```
+
+Esta tabla almacena embeddings experimentales de 1024 dimensiones asociados a los chunks existentes.
+
+### Tabla experimental para BGE-M3
+
+La tabla `chunk_embeddings_bge_m3` permite almacenar embeddings multilingües sin modificar la estructura original de `document_chunks`.
+
+Campos principales:
+
+```text
+id
+chunk_id
+model_name
+dimensions
+embedding
+created_at
+```
+
+Relación:
+
+```text
+chunk_embeddings_bge_m3.chunk_id -> document_chunks.id
+ON DELETE CASCADE
+```
+
+Esto permite mantener varios motores de recuperación sin perder compatibilidad con el sistema original.
+
+### Scripts agregados para BGE-M3
+
+Se incorporaron los siguientes archivos:
+
+```text
+app/embed_chunks_bge_m3.py
+```
+
+Genera embeddings con `bge-m3` para los chunks pendientes y los guarda en `chunk_embeddings_bge_m3`.
+
+Uso:
+
+```bash
+python -m app.embed_chunks_bge_m3 --limit 300
+```
+
+```text
+app/search_chunks_bge_m3.py
+```
+
+Permite realizar búsquedas semánticas usando los embeddings `bge-m3`.
+
+Uso:
+
+```bash
+python -m app.search_chunks_bge_m3 "¿Cómo crear un usuario con contraseña en PostgreSQL?" --limit 5
+```
+
+```text
+app/retrieval_service_bge_m3.py
+```
+
+Servicio de recuperación semántica basado en `bge-m3`. Recupera chunks, calcula similitud y registra trazabilidad cuando se utiliza con `trace=True`.
+
+```text
+app/rag_answer_service_bge_m3.py
+```
+
+Servicio RAG completo que utiliza recuperación multilingüe con `bge-m3` y generación de respuesta con el modelo configurado.
+
+### Adaptador conversacional
+
+El archivo:
+
+```text
+app/openclaw_adapter.py
+```
+
+fue actualizado para aceptar un parámetro de modelo de embeddings. Actualmente puede usar:
+
+```text
+nomic-embed-text
+bge-m3
+```
+
+Cuando el parámetro `embedding_model` recibe el valor `bge-m3`, el adaptador utiliza el flujo multilingüe.
+
+### Configuración local para Discord
+
+En el archivo `.env` local se debe configurar:
+
+```env
+DISCORD_BOT_TOKEN=TOKEN_REAL_DEL_BOT
+DISCORD_COMMAND_PREFIX=!rag
+DISCORD_EVAL_COMMAND_PREFIX=!rageval
+DISCORD_DEFAULT_DOCUMENT_ID=
+DISCORD_DEFAULT_LIMIT=3
+DISCORD_DEFAULT_MODEL=gemma4:e4b
+DISCORD_EMBEDDING_MODEL=bge-m3
+```
+
+Notas importantes:
+
+* `DISCORD_DEFAULT_DOCUMENT_ID=` debe quedar vacío para buscar en todo el corpus.
+* `.env` no debe subirse al repositorio.
+* El token de Discord nunca debe escribirse en archivos versionados.
+
+### Comparación entre modelos de embeddings
+
+Se realizó una comparación con la misma consulta:
+
+```text
+¿Cómo crear un usuario con contraseña en PostgreSQL?
+```
+
+Con `nomic-embed-text`, la recuperación no fue adecuada para la consulta en español sobre un documento en inglés, ya que recuperó principalmente contenido de `KALI LINUX.pdf`.
+
+Con `bge-m3`, la recuperación fue correcta. El sistema recuperó como primer resultado:
+
+```text
+PostgreSQLNotesForProfessionals.pdf
+Section 20.1: Create a user with a password
+```
+
+Con los siguientes valores observados:
+
+```text
+similarity_score: 0.7536
+distance: 0.2464
+chunk_id: 1521
+document_id: 12
+```
+
+Este resultado evidencia que `bge-m3` mejora la recuperación semántica en escenarios multilingües dentro del corpus técnico utilizado.
+
+### Estado actual oficial
+
+La rama experimental `experiment/multilingual-embeddings` fue fusionada en `main`.
+
+El flujo oficial actual del proyecto utiliza la integración Discord con soporte para recuperación multilingüe mediante `bge-m3`, manteniendo el flujo anterior con `nomic-embed-text` como referencia o alternativa.
+
+### Archivos principales relacionados
+
+```text
+app/discord_bot.py
+app/openclaw_adapter.py
+app/rag_answer_service_bge_m3.py
+app/retrieval_service_bge_m3.py
+app/embed_chunks_bge_m3.py
+app/search_chunks_bge_m3.py
+manual.txt
+```
+
+### Evidencia técnica generada
+
+Hasta este punto, el prototipo permite evidenciar:
+
+* consulta desde canal conversacional Discord;
+* recuperación documental con PostgreSQL y pgvector;
+* uso de embeddings multilingües;
+* respuesta generada en el idioma de la pregunta;
+* trazabilidad mediante `query_id`;
+* registro en `rag_queries`;
+* registro de recuperación en `retrieval_logs`;
+* visualización de fuentes recuperadas;
+* ficha completa de evaluación mediante `!rageval`.
+
+### Siguiente trabajo recomendado
+
+Los siguientes pasos técnicos recomendados son:
+
+1. Pulir el formato de fuentes recuperadas en Discord.
+2. Documentar la creación de la tabla `chunk_embeddings_bge_m3` en scripts SQL del proyecto.
+3. Agregar una opción formal en terminal para elegir `nomic-embed-text` o `bge-m3`.
+4. Crear pruebas comparativas con consultas en español e inglés.
+5. Construir la matriz de evaluación con resultados por consulta, documento, chunk, similitud, distancia, trazabilidad y fidelidad de respuesta.
