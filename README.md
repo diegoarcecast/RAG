@@ -1,4 +1,4 @@
-# Prototipo RAG para tesis
+# Diseño, implementación y validación técnica de un prototipo RAG con integración conversacional para evaluar la calidad, trazabilidad y confiabilidad de respuestas en consultas documentales académicas y técnicas en un entorno controlado de validación tecnológica.
 
 Documentación maestra del prototipo RAG para consultas documentales académicas y técnicas.
 
@@ -144,7 +144,11 @@ Usuario en Discord
 ## 5. Estructura de carpetas
 
 ```text
-rag-tesis/
+RAG/
+├── .gitignore
+├── README.md
+├── manual.txt
+├── requirements.txt
 ├── app/
 │   ├── embeddings/
 │   ├── generation/
@@ -603,7 +607,13 @@ LEFT JOIN chunk_embeddings_bge_m3 eb
 WHERE eb.id IS NULL;
 ```
 
----
+```bash
+python -m app.ingest_document data/raw/samples/nuevo_documento.pdf \
+  --chunk-size 1200 \
+  --chunk-overlap 200 \
+  --min-chunk-size 120 \
+  --save-db
+```
 
 ## 15. Cómo hacer búsquedas semánticas
 
@@ -923,7 +933,7 @@ python -m app.embed_chunks_bge_m3 --limit 300
 
 Para borrar embeddings estándar se requeriría actualizar `document_chunks.embedding` a `NULL`, pero hacerlo afecta el flujo estándar y debe realizarse solo si se desea regenerar todos los vectores `nomic-embed-text`.
 
----
+Cambiar `27` por el `query_id` real.
 
 ## 25. Seguridad del repositorio
 
@@ -947,6 +957,8 @@ git status
 ```
 
 `.gitignore` ya protege `.env`, `.venv/`, `logs/`, `data/processed/` y `data/raw/*` salvo `.gitkeep`.
+
+Advertencia: `document_chunks.document_id` tiene `ON DELETE CASCADE`. Al borrar un documento, PostgreSQL borra automáticamente sus chunks y, por cascada, también logs/embeddings asociados donde existan relaciones configuradas.
 
 ---
 
@@ -1110,7 +1122,9 @@ Campos sugeridos para matriz académica:
 | Evidencia | `document_chunks.chunk_text` |
 | Evaluación humana | Campo externo en matriz |
 
----
+   ```bash
+   python -m app.search_chunks_bge_m3 "¿Cómo crear un usuario con contraseña en PostgreSQL?" --limit 5
+   ```
 
 ## 30. Siguientes pasos
 
