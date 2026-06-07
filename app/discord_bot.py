@@ -18,6 +18,7 @@ EVAL_COMMAND_PREFIX = os.getenv("DISCORD_EVAL_COMMAND_PREFIX", "!rageval")
 DEFAULT_DOCUMENT_ID = os.getenv("DISCORD_DEFAULT_DOCUMENT_ID")
 DEFAULT_LIMIT = int(os.getenv("DISCORD_DEFAULT_LIMIT", "3"))
 DEFAULT_MODEL = os.getenv("DISCORD_DEFAULT_MODEL", "gemma4:e4b")
+DEFAULT_EMBEDDING_MODEL = os.getenv("DISCORD_EMBEDDING_MODEL", "bge-m3")
 
 if not DISCORD_BOT_TOKEN:
     raise RuntimeError("Falta DISCORD_BOT_TOKEN en el archivo .env.")
@@ -99,6 +100,7 @@ async def on_ready() -> None:
     print(f"Bot conectado como {client.user}")
     print(f"Comando compacto activo: {COMMAND_PREFIX} <pregunta>")
     print(f"Comando evaluación activo: {EVAL_COMMAND_PREFIX} <pregunta>")
+    print(f"Modelo embeddings Discord: {DEFAULT_EMBEDDING_MODEL}")
 
 
 @client.event
@@ -135,6 +137,7 @@ async def on_message(message: discord.Message) -> None:
                 document_id=get_default_document_id(),
                 channel="discord-direct",
                 model=DEFAULT_MODEL,
+                embedding_model=DEFAULT_EMBEDDING_MODEL,
             )
 
             if is_eval_mode:

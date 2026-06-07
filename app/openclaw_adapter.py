@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.rag_answer_service import generate_rag_answer
+from app.rag_answer_service_bge_m3 import generate_rag_answer_bge_m3
 
 
 @dataclass
@@ -19,6 +20,7 @@ def answer_from_openclaw(
     source_type: str | None = None,
     channel: str = "discord-openclaw",
     model: str = "gemma4:e4b",
+    embedding_model: str = "nomic-embed-text",
 ) -> OpenClawRagResponse:
     """
     Adaptador para que OpenClaw o Discord consulten el sistema RAG.
@@ -34,14 +36,26 @@ def answer_from_openclaw(
     if limit <= 0:
         raise ValueError("limit debe ser mayor que 0.")
 
-    result = generate_rag_answer(
-        question=question.strip(),
-        limit=limit,
-        document_id=document_id,
-        source_type=source_type,
-        channel=channel,
-        generation_model=model,
-    )
+    normalized_embedding_model = embedding_model.strip().lower()
+
+    if normalized_embedding_model == "bge-m3":
+        result = generate_rag_answer_bge_m3(
+            question=question.strip(),
+            limit=limit,
+            document_id=document_id,
+            source_type=source_type,
+            channel=channel,
+            generation_model=model,
+        )
+    else:
+        result = generate_rag_answer(
+            question=question.strip(),
+            limit=limit,
+            document_id=document_id,
+            source_type=source_type,
+            channel=channel,
+            generation_model=model,
+        )
 
     return OpenClawRagResponse(
         query_id=result.query_id,
