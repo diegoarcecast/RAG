@@ -1,64 +1,112 @@
 # Diseño, implementación y validación técnica de un prototipo RAG con integración conversacional para evaluar la calidad, trazabilidad y confiabilidad de respuestas en consultas documentales académicas y técnicas en un entorno controlado de validación tecnológica.
 
-Este repositorio contiene el prototipo técnico de tesis para un sistema **Retrieval-Augmented Generation (RAG)** orientado a consultas documentales académicas y técnicas. El énfasis del proyecto está en el **prototipo RAG con integración conversacional**, la trazabilidad documental, la calidad de recuperación y la confiabilidad evaluable de las respuestas. Discord es la integración conversacional actualmente implementada; OpenClaw se mantiene como componente conceptual o posible integración futura, no como eje del título oficial.
+Documentación maestra del prototipo RAG para consultas documentales académicas y técnicas.
 
-> **Documento maestro:** este `README.md` es la documentación maestra actual. `manual.txt` y `docs/` se conservan como documentación auxiliar o histórica y pueden contener notas de etapas anteriores.
-
----
-
-## 1. Propósito académico
-
-El proyecto apoya una tesis de Ingeniería Informática mediante el diseño, implementación y validación técnica de un prototipo RAG en un entorno controlado. El sistema permite evaluar:
-
-- **Trazabilidad documental:** relación entre pregunta, respuesta, documentos recuperados, chunks y `query_id`.
-- **Calidad de recuperación:** análisis de `distance`, `similarity_score`, ranking, documento y chunk recuperado.
-- **Confiabilidad de respuestas:** el prompt instruye al modelo a responder con base en la evidencia recuperada, y la respuesta se audita posteriormente con trazabilidad, revisión de chunks y ficha de evaluación.
-- **Evaluación técnica de sistemas RAG:** generación de salidas reutilizables para matriz de evaluación académica.
-- **Integración conversacional:** uso de Discord como canal implementado para interacción, con un adaptador desacoplado (`app.openclaw_adapter`) que puede servir como base para OpenClaw u otra capa externa futura.
-
-El proyecto no busca entrenar un modelo desde cero. Su objetivo es validar una arquitectura funcional que combine ingesta documental, almacenamiento, recuperación semántica, generación local de respuestas y evaluación trazable.
+El proyecto corresponde a una tesis de Ingeniería Informática orientada a diseñar, implementar y validar técnicamente un sistema basado en **Retrieval-Augmented Generation (RAG)**, integrado a un canal conversacional mediante **Discord** y preparado conceptualmente para **OpenClaw**, con el fin de evaluar trazabilidad documental, calidad de recuperación y confiabilidad de respuestas en un entorno controlado.
 
 ---
 
-## 2. Estado actual del proyecto
+## 0. Diagnóstico previo del repositorio
 
-### Implementado en el repositorio
+### 0.1 Resumen de lo entendido del sistema
+
+El repositorio implementa un prototipo RAG local con las siguientes capacidades:
+
+1. Recibe documentos académicos o técnicos en distintos formatos.
+2. Detecta tipo documental y extrae texto por método directo u OCR cuando el PDF no contiene texto suficiente.
+3. Limpia y normaliza texto.
+4. Divide el contenido en chunks con solapamiento.
+5. Persiste documentos y chunks en PostgreSQL.
+6. Genera embeddings locales con Ollama.
+7. Usa `pgvector` para recuperación semántica.
+8. Genera respuestas con un modelo generativo local de Ollama, por defecto `gemma4:e4b`.
+9. Registra trazabilidad en `rag_queries` y `retrieval_logs`.
+10. Expone el flujo por terminal, por un adaptador conversacional compatible conceptualmente con OpenClaw y por un bot de Discord.
+11. Incluye dos rutas de recuperación:
+    - `nomic-embed-text`, con vectores de 768 dimensiones guardados en `document_chunks.embedding`.
+    - `bge-m3`, con vectores multilingües de 1024 dimensiones guardados en `chunk_embeddings_bge_m3`.
+
+### 0.2 Inconsistencias detectadas entre código, README anterior y manual
+
+| Tema | Situación detectada | Impacto | Estado recomendado |
+|---|---|---|---|
+| Variables de base de datos | El código usa `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER` y `POSTGRES_PASSWORD`; no usa `DATABASE_URL`. | Un `.env` basado solo en `DATABASE_URL` no funcionaría con el código actual. | Documentar variables reales y mencionar `DATABASE_URL` solo como pendiente opcional. |
+| Tabla `chunk_embeddings_bge_m3` | El código BGE-M3 requiere la tabla, pero el `schema.sql` anterior no la incluía. | Una instalación desde cero fallaría al ejecutar `app.embed_chunks_bge_m3`. | Incluir la tabla en `database/schema.sql` y documentar SQL de respaldo. |
+| Manual de Discord | `manual.txt` documenta `DISCORD_DEFAULT_DOCUMENT_ID=10`, mientras el flujo actual recomienda dejarlo vacío para buscar en todo el corpus. | Un filtro fijo puede ocultar resultados relevantes o causar recuperación incorrecta. | Documentar `DISCORD_DEFAULT_DOCUMENT_ID=` vacío como configuración recomendada. |
+| Estado de documentación | `docs/estado_actual.md` está desactualizado respecto a Discord, RAG generativo y BGE-M3. | Puede confundir al reconstruir el estado real del prototipo. | Usar este README como fuente maestra. |
+| Carpetas `logs/` y `scripts/` | Están mencionadas como estructura esperada, pero no necesariamente existen en el árbol versionado. | No afecta ejecución, pero puede confundir. | Documentarlas como carpetas operativas opcionales/locales. |
+| CLI RAG con BGE-M3 | Existe servicio Python para BGE-M3 y Discord lo puede usar mediante adaptador, pero `app.ask_rag` usa la ruta estándar `nomic-embed-text`. | No hay parámetro CLI formal en `app.ask_rag` para elegir embeddings. | Documentarlo como pendiente y mostrar ejemplo Python para BGE-M3. |
+
+### 0.3 Reproducibilidad: scripts SQL o comandos faltantes
+
+Para reproducir el flujo completo desde cero es necesario que la base contenga:
+
+- extensión `vector`;
+- tablas `documents`, `document_chunks`, `rag_queries`, `retrieval_logs`;
+- tabla `chunk_embeddings_bge_m3` para recuperación multilingüe.
+
+El archivo `database/schema.sql` debe ser la fuente de creación de esquema. Si una instalación tiene un esquema antiguo sin `chunk_embeddings_bge_m3`, puede aplicar el bloque SQL indicado en la sección [9. Creación de base de datos desde cero](#9-creación-de-base-de-datos-desde-cero).
+
+---
+
+## 1. Título del proyecto
+
+**Prototipo RAG para tesis: consultas documentales académicas y técnicas con trazabilidad, evaluación y canal conversacional.**
+
+El sistema es un prototipo local de **Retrieval-Augmented Generation** que permite consultar documentos académicos y técnicos mediante recuperación semántica y generación de respuestas fundamentadas en evidencia documental. Está diseñado para apoyar una tesis, no para entrenar un modelo desde cero.
+
+---
+
+## 2. Propósito académico
+
+El prototipo sirve como plataforma técnica para evaluar sistemas RAG en un entorno controlado. Su propósito académico es producir evidencia sobre:
+
+- **Trazabilidad documental:** cada respuesta puede auditarse mediante `query_id`, documentos, chunks recuperados y puntajes de similitud.
+- **Calidad de recuperación:** permite comparar resultados por `distance`, `similarity_score`, `rank_position`, documento y fragmento.
+- **Confiabilidad de respuestas:** el prompt obliga al modelo generativo a responder solo con evidencia recuperada.
+- **Evaluación técnica de sistemas RAG:** la ficha de evaluación facilita registrar resultados en una matriz académica.
+- **Integración conversacional:** Discord opera como capa de interacción real para usuarios, mientras `app.openclaw_adapter` actúa como adaptador conceptual para OpenClaw u otra capa externa.
+
+---
+
+## 3. Estado actual del proyecto
+
+### Implementado y validado en código
 
 - Ingesta documental individual y por carpeta.
-- Detección de tipo documental.
+- Detección de formatos soportados.
 - Extracción de texto desde PDF, DOCX, TXT, Markdown, HTML, CSV y XLSX.
-- OCR para PDF cuando la extracción directa no entrega texto suficiente.
+- OCR en PDF escaneado o con texto directo insuficiente.
 - Limpieza y normalización de texto.
-- Chunking con solapamiento y ajuste de límites para evitar iniciar chunks en medio de palabras.
+- Chunking con solapamiento y ajustes para evitar inicios en medio de palabras.
 - Persistencia en PostgreSQL.
 - Uso de `pgvector`.
-- Embeddings estándar con `nomic-embed-text` de 768 dimensiones.
+- Embeddings con `nomic-embed-text` de 768 dimensiones.
 - Embeddings multilingües con `bge-m3` de 1024 dimensiones.
-- Búsqueda semántica estándar y multilingüe.
-- Generación de respuestas con Ollama/Gemma u otro modelo configurado.
+- Búsqueda semántica con filtros por `document_id` y `source_type`.
+- Generación de respuestas con Ollama/Gemma.
 - Ficha completa para evaluación.
 - Trazabilidad en `rag_queries` y `retrieval_logs`.
-- Comando formal `python -m app.ask_rag` para el flujo estándar.
+- Comando formal `python -m app.ask_rag`.
 - Adaptador conversacional `app.openclaw_adapter`.
 - Bot de Discord `app.discord_bot`.
 - Modo compacto `!rag`.
 - Modo evaluación `!rageval`.
 
-### Pendiente o recomendado como mejora futura
+### Pendiente o mejorable
 
-- Agregar pruebas automatizadas.
-- Parametrizar el motor de embeddings desde `app.ask_rag`.
-- Separar explícitamente `generation_model` y `embedding_model` en la base de datos.
+- Crear pruebas automatizadas.
+- Agregar CLI formal para elegir `nomic-embed-text` o `bge-m3` desde `app.ask_rag`.
 - Crear endpoint HTTP opcional para OpenClaw.
 - Crear scripts de instalación inicial.
-- Mejorar formato de fuentes recuperadas en Discord.
-- Construir una matriz formal de evaluación para la tesis.
+- Mejorar formato de fuentes en Discord.
+- Construir matriz de evaluación formal para la tesis.
 
 ---
 
-## 3. Arquitectura general
+## 4. Arquitectura general
 
-### 3.1 Flujo documental y RAG
+### 4.1 Flujo documental y RAG
 
 ```text
 Documento
@@ -75,7 +123,7 @@ Documento
   -> terminal o Discord
 ```
 
-### 3.2 Flujo conversacional con Discord
+### 4.2 Flujo conversacional con Discord/OpenClaw
 
 ```text
 Usuario en Discord
@@ -84,34 +132,16 @@ Usuario en Discord
   -> servicio RAG
   -> recuperación semántica
   -> PostgreSQL + pgvector
-  -> generación con Gemma u otro modelo configurado
+  -> generación con Gemma
   -> trazabilidad
   -> respuesta compacta (!rag) o ficha completa (!rageval)
 ```
 
-`app.openclaw_adapter` no implementa OpenClaw directamente. Su función actual es desacoplar el canal conversacional del flujo RAG para que Discord, OpenClaw o una API futura puedan invocar una función común.
+`app.openclaw_adapter` no implementa OpenClaw directamente; funciona como una interfaz desacoplada para que Discord, OpenClaw o una API futura invoquen el flujo RAG.
 
 ---
 
-## 4. Diagnóstico técnico e inconsistencias revisadas
-
-| Tema revisado | Situación actual | Decisión documental |
-|---|---|---|
-| Título oficial | Existían títulos anteriores centrados en RAG, Discord u OpenClaw. | Se adopta como título oficial: “Diseño, implementación y validación técnica de un prototipo RAG con integración conversacional para evaluar la calidad, trazabilidad y confiabilidad de respuestas en consultas documentales académicas y técnicas en un entorno controlado de validación tecnológica.” |
-| OpenClaw | No hay implementación directa de OpenClaw en el repo. | Se documenta como integración conceptual o futura; Discord es el canal implementado. |
-| Variables de base de datos | El código usa `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`; no usa `DATABASE_URL`. | Se documentan las variables reales y `DATABASE_URL` queda como mejora futura opcional. |
-| `chunk_embeddings_bge_m3` | El flujo BGE-M3 requiere una tabla separada de 1024 dimensiones. | `database/schema.sql` contiene la tabla, FK, `UNIQUE (chunk_id, model_name)` e índice por `chunk_id`. |
-| `manual.txt` | Contenía configuración antigua con `DISCORD_DEFAULT_DOCUMENT_ID=10`. | Se actualiza para recomendar `DISCORD_DEFAULT_DOCUMENT_ID=` vacío y se marca como auxiliar. |
-| `model_name` en `rag_queries` | Puede representar el modelo asociado al flujo de recuperación según la ruta usada; el modelo generativo se muestra en la ficha. | Se documenta como limitación actual y se recomienda separar `generation_model` y `embedding_model` en el futuro. |
-| Estructura de carpetas | Algunas carpetas como `logs/`, `scripts/` y `data/processed/` pueden existir localmente o estar proyectadas, pero no forman parte del árbol versionado actual. | Se separa estructura versionada, carpetas locales ignoradas y estructura futura recomendada. |
-
----
-
-## 5. Estructura real del repositorio
-
-### 5.1 Estructura versionada actual
-
-Árbol relevante versionado actualmente:
+## 5. Estructura de carpetas
 
 ```text
 RAG/
@@ -120,112 +150,80 @@ RAG/
 ├── manual.txt
 ├── requirements.txt
 ├── app/
-│   ├── ask_rag.py
-│   ├── db.py
-│   ├── db_check.py
-│   ├── discord_bot.py
-│   ├── embed_chunks.py
-│   ├── embed_chunks_bge_m3.py
-│   ├── ingest_document.py
-│   ├── ingest_folder.py
-│   ├── openclaw_adapter.py
-│   ├── rag_answer_service.py
-│   ├── rag_answer_service_bge_m3.py
-│   ├── rag_trace_repository.py
-│   ├── retrieval_service.py
-│   ├── retrieval_service_bge_m3.py
-│   ├── search_chunks.py
-│   ├── search_chunks_bge_m3.py
-│   ├── search_chunks_trace.py
 │   ├── embeddings/
-│   │   ├── __init__.py
-│   │   ├── ollama_client.py
-│   │   ├── repository.py
-│   │   └── search_repository.py
 │   ├── generation/
-│   │   ├── __init__.py
-│   │   └── ollama_generation_client.py
-│   └── ingestion/
-│       ├── __init__.py
-│       ├── chunker.py
-│       ├── cleaner.py
-│       ├── detector.py
-│       ├── extractors.py
-│       ├── pipeline.py
-│       └── repository.py
+│   ├── ingestion/
+│   └── *.py
 ├── database/
 │   └── schema.sql
 ├── data/
-│   └── raw/
-│       └── .gitkeep
-└── docs/
-    ├── base_datos.md
-    └── estado_actual.md
+│   ├── raw/
+│   └── processed/
+├── docs/
+├── logs/
+├── scripts/
+├── README.md
+├── manual.txt
+├── requirements.txt
+├── .env
+└── .gitignore
 ```
 
-### 5.2 Carpetas locales ignoradas por Git
-
-| Ruta | Estado | Uso |
-|---|---|---|
-| `.env` | Local, ignorado por Git. | Variables y secretos. |
-| `.venv/` | Local, ignorado por Git. | Entorno virtual Python. |
-| `data/raw/*` | Ignorado salvo `.gitkeep`. | Corpus documental local. |
-| `data/processed/` | Ignorado; puede no existir en una clonación limpia. | Salidas temporales, debug o JSON de ingesta. |
-| `logs/` | Ignorado; puede no existir en el repo versionado. | Logs locales si se decide generarlos. |
-| `__pycache__/` | Ignorado. | Caché Python generado en ejecución. |
-
-### 5.3 Carpetas recomendadas para operación futura
-
-| Ruta | Estado | Uso propuesto |
-|---|---|---|
-| `scripts/` | No forma parte del árbol versionado actual si está vacía. | Scripts de instalación, migración o operación. |
-| `logs/` | Local/ignorada. | Registro operativo si se agrega logging. |
-| `data/processed/debug/` | Local/ignorada. | Salidas de depuración de ingesta. |
+| Ruta | Propósito |
+|---|---|
+| `app/` | Código principal del prototipo: CLI, servicios RAG, Discord, adaptador y acceso a base de datos. |
+| `app/ingestion/` | Pipeline documental: detección, extracción, limpieza, chunking y persistencia. |
+| `app/embeddings/` | Cliente Ollama para embeddings estándar y repositorios de persistencia/búsqueda. |
+| `app/generation/` | Cliente Ollama para generación de texto. |
+| `database/` | SQL de creación de esquema PostgreSQL/pgvector. |
+| `data/raw/` | Entrada local de documentos. Está ignorada en Git salvo `.gitkeep`. |
+| `data/processed/` | Salidas temporales o procesadas. Está ignorada en Git. |
+| `docs/` | Documentación auxiliar histórica. Este README es la documentación maestra actual. |
+| `logs/` | Logs locales si se generan. No debe versionarse. |
+| `scripts/` | Carpeta sugerida para scripts futuros de instalación/operación. Puede no existir o estar vacía. |
+| `README.md` | Documentación maestra del proyecto. |
+| `manual.txt` | Manual operativo previo; útil como referencia histórica. |
+| `requirements.txt` | Dependencias Python. |
+| `.env` | Variables locales y secretos. No debe versionarse. |
+| `.gitignore` | Reglas de exclusión de archivos locales, datos y secretos. |
 
 ---
 
 ## 6. Explicación archivo por archivo
 
-Todos los archivos listados en esta sección existen en el repositorio versionado actual.
-
 | Archivo | Rol técnico |
 |---|---|
-| `.gitignore` | Excluye `.env`, `.venv/`, `logs/`, `data/processed/`, `data/raw/*`, `__pycache__/` y otros archivos locales. |
-| `requirements.txt` | Dependencias Python del prototipo. |
-| `manual.txt` | Manual operativo auxiliar; el README es la referencia maestra actual. |
-| `database/schema.sql` | Crea extensión `vector`, tablas principales, tabla BGE-M3 e índices básicos. |
-| `docs/base_datos.md` | Documento histórico sobre base de datos. |
-| `docs/estado_actual.md` | Documento histórico de estado inicial del proyecto. |
-| `app/db.py` | Centraliza conexión a PostgreSQL usando variables `POSTGRES_*` cargadas desde `.env`. |
-| `app/db_check.py` | Valida conexión a PostgreSQL con `SELECT current_database(), current_user;`. |
+| `app/db.py` | Centraliza la conexión a PostgreSQL usando variables `POSTGRES_*` cargadas desde `.env`. |
+| `app/db_check.py` | Valida conexión a PostgreSQL ejecutando `SELECT current_database(), current_user;`. |
 | `app/ingest_document.py` | CLI para procesar un documento individual, mostrar texto/chunks, guardar JSON opcional y persistir con `--save-db`. |
-| `app/ingest_folder.py` | CLI para procesar archivos soportados en una carpeta y guardarlos opcionalmente en PostgreSQL. |
+| `app/ingest_folder.py` | CLI para procesar todos los archivos soportados en una carpeta y guardarlos opcionalmente en PostgreSQL. |
 | `app/embed_chunks.py` | Genera embeddings pendientes con `nomic-embed-text` y los guarda en `document_chunks.embedding`. |
 | `app/embed_chunks_bge_m3.py` | Genera embeddings multilingües `bge-m3` para chunks pendientes y los guarda en `chunk_embeddings_bge_m3`. |
 | `app/search_chunks.py` | Ejecuta búsqueda semántica estándar sobre `document_chunks.embedding`. |
 | `app/search_chunks_bge_m3.py` | Ejecuta búsqueda semántica multilingüe sobre `chunk_embeddings_bge_m3`. |
-| `app/search_chunks_trace.py` | Búsqueda estándar con registro de trazabilidad en `rag_queries` y `retrieval_logs`. |
-| `app/ask_rag.py` | CLI formal para ejecutar pregunta RAG estándar, recuperar chunks, generar respuesta y mostrar ficha. |
-| `app/openclaw_adapter.py` | Adaptador conversacional; decide entre flujo estándar y BGE-M3 según `embedding_model`. |
-| `app/discord_bot.py` | Bot Discord; atiende `!rag` y `!rageval`, invoca el adaptador y divide mensajes largos. |
+| `app/search_chunks_trace.py` | Variante de búsqueda estándar que registra trazabilidad en `rag_queries` y `retrieval_logs`. |
+| `app/ask_rag.py` | CLI formal para ejecutar pregunta RAG estándar, recuperar chunks, generar respuesta y mostrar ficha de evaluación. |
+| `app/openclaw_adapter.py` | Adaptador conversacional que recibe una pregunta y decide si usa flujo estándar o BGE-M3 según `embedding_model`. |
+| `app/discord_bot.py` | Bot Discord. Lee comandos `!rag` y `!rageval`, invoca el adaptador y divide mensajes largos. |
 | `app/rag_answer_service.py` | Servicio RAG estándar: recupera, construye contexto, genera respuesta, arma ficha y actualiza `rag_queries.answer`. |
-| `app/rag_answer_service_bge_m3.py` | Servicio RAG multilingüe con recuperación BGE-M3 y generación configurada. |
-| `app/retrieval_service.py` | Recuperación estándar con `nomic-embed-text`, similitud y trazabilidad opcional. |
-| `app/retrieval_service_bge_m3.py` | Recuperación multilingüe con `bge-m3`, similitud y trazabilidad opcional. |
-| `app/rag_trace_repository.py` | Inserta consultas, inserta logs de recuperación, obtiene trazas y actualiza respuestas. |
-| `app/embeddings/__init__.py` | Inicializador del paquete `app.embeddings`. |
-| `app/embeddings/ollama_client.py` | Cliente Ollama para embeddings estándar; valida 768 dimensiones. |
-| `app/embeddings/repository.py` | Obtiene chunks sin embedding, actualiza vectores y cuenta pendientes/procesados. |
-| `app/embeddings/search_repository.py` | Consulta chunks similares con operador pgvector `<=>` y filtros opcionales. |
-| `app/generation/__init__.py` | Inicializador del paquete `app.generation`. |
-| `app/generation/ollama_generation_client.py` | Cliente Ollama `/api/generate` para generación con `stream=False`. |
-| `app/ingestion/__init__.py` | Inicializador del paquete `app.ingestion`. |
-| `app/ingestion/detector.py` | Detecta formatos soportados y MIME. |
-| `app/ingestion/extractors.py` | Extrae texto por tipo documental; PDF directo u OCR si hace falta. |
-| `app/ingestion/cleaner.py` | Normaliza Unicode, elimina caracteres de control y normaliza espacios. |
+| `app/rag_answer_service_bge_m3.py` | Servicio RAG multilingüe: igual que el estándar, pero recupera con `bge-m3`. |
+| `app/retrieval_service.py` | Capa de recuperación estándar con `nomic-embed-text`, cálculo de similitud y trazabilidad opcional. |
+| `app/retrieval_service_bge_m3.py` | Capa de recuperación multilingüe con `bge-m3`, cálculo de similitud y trazabilidad opcional. |
+| `app/rag_trace_repository.py` | Inserta consultas, logs de recuperación, obtiene trazas y actualiza respuestas. |
+| `app/ingestion/detector.py` | Detecta formatos soportados y MIME. Soporta `.pdf`, `.docx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.csv`, `.xlsx`. |
+| `app/ingestion/extractors.py` | Extrae texto por tipo documental; en PDF intenta extracción directa y recurre a OCR si el texto es insuficiente. |
+| `app/ingestion/cleaner.py` | Normaliza Unicode, elimina caracteres de control y normaliza espacios/saltos de línea. |
 | `app/ingestion/chunker.py` | Divide texto en chunks con overlap, límites naturales y metadatos de posición. |
-| `app/ingestion/pipeline.py` | Orquesta detección, extracción, metadatos, chunking y resultado en memoria. |
+| `app/ingestion/pipeline.py` | Orquesta detección, extracción, metadatos, chunking y resultado estructurado en memoria. |
 | `app/ingestion/repository.py` | Inserta documentos/chunks y permite eliminar documentos por `file_path` con cascada. |
+| `app/embeddings/ollama_client.py` | Cliente Ollama para `nomic-embed-text`; valida 768 dimensiones. |
+| `app/embeddings/repository.py` | Obtiene chunks sin embedding, actualiza vectores y cuenta chunks pendientes/procesados. |
+| `app/embeddings/search_repository.py` | Consulta chunks similares con operador pgvector `<=>` y filtros opcionales. |
+| `app/generation/ollama_generation_client.py` | Cliente Ollama `/api/generate` para respuestas generativas con `stream=False`. |
+| `database/schema.sql` | Crea extensión `vector`, tablas principales, tabla BGE-M3 e índices básicos. |
+| `manual.txt` | Manual operativo anterior; algunas secciones quedaron históricas frente al estado actual. |
+| `docs/base_datos.md` | Documentación histórica de base de datos. |
+| `docs/estado_actual.md` | Estado histórico inicial del proyecto. |
 
 ---
 
@@ -264,6 +262,8 @@ ollama pull nomic-embed-text
 ollama pull bge-m3
 ollama pull gemma4:e4b
 ```
+
+Modelos usados:
 
 | Modelo | Uso | Dimensiones |
 |---|---|---:|
@@ -310,6 +310,8 @@ Reglas importantes:
 
 ### 9.1 Crear usuario y base
 
+Ejemplo con usuario `postgres`:
+
 ```bash
 sudo -u postgres createuser rag_user --pwprompt
 sudo -u postgres createdb rag_tesis -O rag_user
@@ -335,7 +337,7 @@ Desde la raíz del repositorio:
 psql -U rag_user -d rag_tesis -f database/schema.sql
 ```
 
-`database/schema.sql` crea actualmente:
+El archivo `database/schema.sql` crea:
 
 - extensión `vector`;
 - `documents`;
@@ -345,9 +347,9 @@ psql -U rag_user -d rag_tesis -f database/schema.sql
 - `chunk_embeddings_bge_m3`;
 - índices básicos.
 
-### 9.3 Tabla BGE-M3 incluida en el esquema
+### 9.3 SQL de respaldo para tabla BGE-M3
 
-La tabla BGE-M3 está incluida en `database/schema.sql`. Si una base antigua no la tiene, aplicar:
+Si la base ya existía y no contiene `chunk_embeddings_bge_m3`, ejecutar:
 
 ```sql
 CREATE TABLE IF NOT EXISTS chunk_embeddings_bge_m3 (
@@ -408,10 +410,8 @@ Registra preguntas y respuestas RAG.
 | `question` | Pregunta original. |
 | `answer` | Respuesta final con ficha de evaluación. |
 | `channel` | Origen: `terminal`, `discord-direct`, etc. |
-| `model_name` | Campo ambiguo en el diseño actual: en la ruta BGE-M3 registra el modelo asociado a recuperación (`bge-m3`); en la ruta estándar puede registrar el modelo pasado por el servicio. El modelo generativo se informa en la ficha de evaluación. |
+| `model_name` | Modelo registrado por el flujo. En BGE-M3 registra el modelo de embeddings; en el flujo estándar puede registrar el modelo indicado por el servicio. |
 | `created_at` | Fecha de consulta. |
-
-Limitación documentada: para evitar ambigüedades, una mejora futura recomendada es separar `embedding_model` y `generation_model` como columnas distintas.
 
 ### 10.4 `retrieval_logs`
 
@@ -434,15 +434,10 @@ Guarda embeddings multilingües separados para no mezclar dimensiones.
 |---|---|
 | `id` | Identificador interno. |
 | `chunk_id` | FK a `document_chunks.id` con `ON DELETE CASCADE`. |
-| `model_name` | Por defecto `bge-m3`; permite filtrar de forma segura por modelo. |
-| `dimensions` | Debe ser 1024 para BGE-M3. |
+| `model_name` | Por defecto `bge-m3`. |
+| `dimensions` | Debe ser 1024. |
 | `embedding` | Vector `bge-m3` de 1024 dimensiones. |
 | `created_at` | Fecha de generación/actualización. |
-
-Restricciones e índices relevantes:
-
-- `UNIQUE (chunk_id, model_name)` evita duplicar embeddings del mismo modelo para un chunk.
-- `idx_chunk_embeddings_bge_m3_chunk_id` acelera uniones por `chunk_id`.
 
 ---
 
@@ -458,7 +453,7 @@ python -m app.db_check
 
 Explicación:
 
-- `cd /home/diego/rag-tesis`: entra a la carpeta local del proyecto. Si la ruta local es distinta, reemplazarla por la ruta real.
+- `cd /home/diego/rag-tesis`: entra a la carpeta local del proyecto.
 - `source .venv/bin/activate`: activa el entorno virtual Python.
 - `python -m app.db_check`: valida conexión con PostgreSQL.
 
@@ -467,6 +462,8 @@ Resultado esperado:
 ```text
 Conexión correcta: base=rag_tesis, usuario=rag_user
 ```
+
+Si la ruta local es distinta, reemplazar `/home/diego/rag-tesis` por la ruta real del repositorio.
 
 ---
 
@@ -486,7 +483,7 @@ Ejemplo:
 data/raw/samples/nuevo_documento.pdf
 ```
 
-`data/raw/` está ignorada por Git para evitar subir documentos reales, pesados o confidenciales. En el repositorio versionado solo se conserva `data/raw/.gitkeep`.
+`data/raw/` está ignorada por Git para evitar subir documentos reales, pesados o confidenciales.
 
 ### 12.2 Formatos soportados
 
@@ -610,7 +607,13 @@ LEFT JOIN chunk_embeddings_bge_m3 eb
 WHERE eb.id IS NULL;
 ```
 
----
+```bash
+python -m app.ingest_document data/raw/samples/nuevo_documento.pdf \
+  --chunk-size 1200 \
+  --chunk-overlap 200 \
+  --min-chunk-size 120 \
+  --save-db
+```
 
 ## 15. Cómo hacer búsquedas semánticas
 
@@ -809,7 +812,7 @@ Este caso fortalece la evaluación de calidad de recuperación porque permite co
 
 El prototipo permite auditar cada respuesta:
 
-- `rag_queries` registra pregunta, canal, modelo asociado al flujo y respuesta final.
+- `rag_queries` registra pregunta, canal, modelo y respuesta final.
 - `retrieval_logs` registra qué chunks fueron recuperados para cada `query_id`.
 - `query_id` conecta la respuesta de usuario con la evidencia documental.
 - `!rageval` muestra una ficha completa para evaluación manual.
@@ -822,7 +825,7 @@ La ficha de evaluación incluye una clasificación preliminar:
 - `evidencia relacionada` si el puntaje es intermedio.
 - `evidencia secundaria o débil` si el puntaje es bajo.
 
-Esta clasificación y el prompt no reemplazan la evaluación humana. La confiabilidad debe revisarse con evidencia recuperada, similitud, distancia, chunks y respuesta final.
+Esta clasificación no reemplaza la evaluación humana.
 
 ---
 
@@ -916,14 +919,13 @@ Advertencia: `document_chunks.document_id` tiene `ON DELETE CASCADE`. Al borrar 
 
 ## 24. Cómo limpiar embeddings experimentales
 
-Para borrar embeddings BGE-M3 y regenerarlos, usar una condición explícita por modelo:
+Para borrar todos los embeddings BGE-M3 y regenerarlos:
 
 ```sql
-DELETE FROM chunk_embeddings_bge_m3
-WHERE model_name = 'bge-m3';
+DELETE FROM chunk_embeddings_bge_m3;
 ```
 
-Esto **no borra documentos ni chunks**. Solo elimina embeddings multilingües BGE-M3. Luego regenerar:
+Esto **no borra documentos ni chunks**. Solo elimina embeddings multilingües experimentales. Luego regenerar:
 
 ```bash
 python -m app.embed_chunks_bge_m3 --limit 300
@@ -931,7 +933,7 @@ python -m app.embed_chunks_bge_m3 --limit 300
 
 Para borrar embeddings estándar se requeriría actualizar `document_chunks.embedding` a `NULL`, pero hacerlo afecta el flujo estándar y debe realizarse solo si se desea regenerar todos los vectores `nomic-embed-text`.
 
----
+Cambiar `27` por el `query_id` real.
 
 ## 25. Seguridad del repositorio
 
@@ -956,6 +958,8 @@ git status
 
 `.gitignore` ya protege `.env`, `.venv/`, `logs/`, `data/processed/` y `data/raw/*` salvo `.gitkeep`.
 
+Advertencia: `document_chunks.document_id` tiene `ON DELETE CASCADE`. Al borrar un documento, PostgreSQL borra automáticamente sus chunks y, por cascada, también logs/embeddings asociados donde existan relaciones configuradas.
+
 ---
 
 ## 26. Comandos Git recomendados
@@ -970,13 +974,13 @@ git diff
 Agregar archivos específicos, no usar `git add .` sin revisar:
 
 ```bash
-git add README.md database/schema.sql manual.txt
+git add README.md database/schema.sql
 ```
 
 Commit descriptivo:
 
 ```bash
-git commit -m "Actualizar documentación maestra del prototipo RAG"
+git commit -m "Documentar arquitectura y operación del prototipo RAG"
 ```
 
 Enviar a la rama principal si corresponde:
@@ -1064,7 +1068,7 @@ git diff --cached
     ```bash
     git status
     git diff
-    git add README.md manual.txt database/schema.sql
+    git add README.md
     git commit -m "Actualizar documentación operativa del prototipo RAG"
     ```
 
@@ -1092,15 +1096,15 @@ git diff --cached
 
 ## 29. Relación con la tesis
 
-El prototipo descrito por el título oficial —**Diseño, implementación y validación técnica de un prototipo RAG con integración conversacional para evaluar la calidad, trazabilidad y confiabilidad de respuestas en consultas documentales académicas y técnicas en un entorno controlado de validación tecnológica**— aporta evidencia concreta para la tesis en estas dimensiones:
+El prototipo aporta evidencia concreta para la tesis en estas dimensiones:
 
 - **Trazabilidad documental:** cada respuesta puede vincularse a documentos y chunks específicos.
 - **Calidad de recuperación:** los resultados pueden analizarse por ranking, distancia y similitud.
-- **Confiabilidad de respuestas:** el prompt instruye al modelo a usar evidencia recuperada, pero la confiabilidad se evalúa mediante trazabilidad, revisión de chunks, similitud, distancia y ficha de evaluación.
+- **Confiabilidad de respuestas:** el prompt restringe al modelo a responder con evidencia recuperada.
 - **Evaluación controlada:** el corpus, modelos, filtros y consultas pueden fijarse para experimentos repetibles.
 - **Comparación de embeddings:** permite contrastar `nomic-embed-text` y `bge-m3`, especialmente en escenarios multilingües.
-- **Integración conversacional:** Discord demuestra operación en un canal real de interacción; OpenClaw queda como integración conceptual o futura.
-- **Matriz de evaluación:** la ficha `!rageval` entrega campos reutilizables para evaluación manual.
+- **Integración conversacional:** Discord demuestra operación en un canal real de interacción.
+- **Matriz de evaluación:** la ficha `!rageval` entrega campos directamente reutilizables para evaluación manual.
 
 Campos sugeridos para matriz académica:
 
@@ -1110,9 +1114,7 @@ Campos sugeridos para matriz académica:
 | Pregunta | `rag_queries.question` |
 | Respuesta | `rag_queries.answer` |
 | Canal | `rag_queries.channel` |
-| Modelo asociado al flujo | `rag_queries.model_name` |
-| Modelo generativo | Ficha de evaluación generada por servicio RAG |
-| Modelo de embeddings | Ficha de evaluación / ruta utilizada |
+| Modelo | `rag_queries.model_name` y ficha |
 | Documento recuperado | `documents.title` |
 | Chunk | `document_chunks.id` |
 | Ranking | `retrieval_logs.rank_position` |
@@ -1120,7 +1122,9 @@ Campos sugeridos para matriz académica:
 | Evidencia | `document_chunks.chunk_text` |
 | Evaluación humana | Campo externo en matriz |
 
----
+   ```bash
+   python -m app.search_chunks_bge_m3 "¿Cómo crear un usuario con contraseña en PostgreSQL?" --limit 5
+   ```
 
 ## 30. Siguientes pasos
 
@@ -1136,7 +1140,6 @@ Próximos pasos técnicos recomendados:
 8. Agregar índices vectoriales cuando exista suficiente volumen de chunks.
 9. Documentar casos de prueba multilingües español-inglés e inglés-español.
 10. Mejorar extracción de metadatos como autor, año y sección real.
-11. Separar `embedding_model` y `generation_model` en `rag_queries` o en una tabla de trazabilidad extendida.
 
 ---
 
@@ -1175,4 +1178,4 @@ python -m app.discord_bot
 
 ## 32. Nota final
 
-Este README prioriza documentación operativa y académica sobre bitácora histórica. Las notas históricas se mantienen en `manual.txt` y `docs/`, pero ante diferencias debe prevalecer este archivo y el código fuente vigente.
+Este README es la documentación maestra actual del repositorio. `manual.txt` y `docs/` se conservan como documentación histórica y operativa auxiliar, pero ante diferencias debe priorizarse este archivo y el código fuente vigente.
